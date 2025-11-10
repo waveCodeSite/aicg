@@ -92,20 +92,20 @@ dev: ## 启动完整开发环境 (API + Worker + Beat)
 
 test: ## 运行所有测试
 	@echo "$(BLUE)🧪 运行测试...$(RESET)"
-	$(UV) run pytest --cov=src --cov-report=term-missing
+	$(UV) run pytest
 	@echo "$(GREEN)✅ 测试完成$(RESET)"
 
 test-unit: ## 运行单元测试
 	@echo "$(BLUE)🧪 运行单元测试...$(RESET)"
-	$(UV) run pytest -m unit --cov=src --cov-report=term-missing
+	$(UV) run pytest -m unit
 
 test-integration: ## 运行集成测试
 	@echo "$(BLUE)🧪 运行集成测试...$(RESET)"
-	$(UV) run pytest -m integration --cov=src --cov-report=term-missing
+	$(UV) run pytest -m integration
 
 test-fast: ## 运行快速测试 (排除慢速测试)
 	@echo "$(BLUE)🏃 运行快速测试...$(RESET)"
-	$(UV) run pytest -m "not slow" --cov=src --cov-report=term-missing
+	$(UV) run pytest -m "not slow" 
 
 lint: ## 运行代码检查和格式化
 	@echo "$(BLUE)🔍 代码检查和格式化...$(RESET)"

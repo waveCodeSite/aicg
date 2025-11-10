@@ -55,12 +55,14 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """创建测试客户端"""
+    from httpx import ASGITransport
+
     def override_get_db():
         return db_session
 
     app.dependency_overrides[get_db_session] = override_get_db
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -90,7 +92,7 @@ def test_project_data():
 
 
 @pytest.fixture
-def auth_headers(client: AsyncClient, test_user_data: dict):
+async def auth_headers(client: AsyncClient, test_user_data: dict):
     """获取认证头"""
     # 注册用户
     response = await client.post("/api/v1/auth/register", json=test_user_data)
