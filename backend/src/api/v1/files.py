@@ -65,7 +65,7 @@ async def upload_file(
             metadata={
                 "user_id": current_user.id,
                 "file_id": file_id,
-                "file_type": file_type.value,
+                "file_type": file_type,
                 "original_filename": file.filename,
             }
         )
@@ -79,7 +79,7 @@ async def upload_file(
                 "file_id": file_id,
                 "original_filename": file.filename,
                 "file_size": file.size,
-                "file_type": file_type.value,
+                "file_type": file_type,
                 "storage_key": storage_result["object_key"],
                 "file_info": file_info,
                 "storage_info": storage_result,
@@ -127,8 +127,8 @@ async def cleanup_orphaned_files(
         project_service = ProjectService(db)
 
         # 获取用户的所有项目
-        projects, _ = await project_service.get_user_projects(
-            user_id=current_user.id,
+        projects, _ = await project_service.get_owner_projects(
+            owner_id=current_user.id,
             page=1,
             size=1000  # 获取大量项目以检查关联
         )
@@ -136,8 +136,8 @@ async def cleanup_orphaned_files(
         # 收集所有项目关联的文件对象键
         project_object_keys = set()
         for project in projects:
-            if project.minio_object_key:
-                project_object_keys.add(project.minio_object_key)
+            if project.file_path:
+                project_object_keys.add(project.file_path)
 
         # 获取用户上传目录下的所有文件
         user_prefix = f"uploads/{current_user.id}/"
@@ -282,6 +282,7 @@ async def list_user_files(
 
     Args:
         current_user: 当前用户
+        db: 数据库会话
         prefix: 文件前缀过滤
         page: 页码
         size: 每页大小
@@ -322,16 +323,16 @@ async def list_user_files(
 
         # 检查哪些文件是孤立的
         project_service = ProjectService(db)
-        projects, _ = await project_service.get_user_projects(
-            user_id=current_user.id,
+        projects, _ = await project_service.get_owner_projects(
+            owner_id=current_user.id,
             page=1,
             size=1000
         )
 
         project_object_keys = set()
         for project in projects:
-            if project.minio_object_key:
-                project_object_keys.add(project.minio_object_key)
+            if project.file_path:
+                project_object_keys.add(project.file_path)
 
         # 更新孤立状态
         for file_info in cleaned_files:
@@ -403,15 +404,15 @@ async def batch_delete_files(
                 continue
 
             # 检查文件是否关联到项目
-            projects, _ = await project_service.get_user_projects(
-                user_id=current_user.id,
+            projects, _ = await project_service.get_owner_projects(
+                owner_id=current_user.id,
                 page=1,
                 size=1000
             )
 
             is_protected = False
             for project in projects:
-                if project.minio_object_key == object_key:
+                if project.file_path == object_key:
                     is_protected = True
                     protected_keys.append(object_key)
                     break
@@ -490,15 +491,15 @@ async def check_file_integrity(
             projects = [project]
         else:
             # 检查用户所有项目
-            projects, _ = await project_service.get_user_projects(
-                user_id=current_user.id,
+            projects, _ = await project_service.get_owner_projects(
+                owner_id=current_user.id,
                 page=1,
                 size=1000
             )
 
         results = []
         for project in projects:
-            if not project.minio_object_key:
+            if not project.file_path:
                 results.append({
                     "project_id": project.id,
                     "project_title": project.title,
@@ -511,7 +512,7 @@ async def check_file_integrity(
 
             try:
                 # 检查文件是否存在
-                file_info = await storage_client.get_file_info(project.minio_object_key)
+                file_info = await storage_client.get_file_info(project.file_path)
                 file_exists = file_info is not None
 
                 if file_exists:

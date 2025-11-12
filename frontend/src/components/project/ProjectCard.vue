@@ -25,12 +25,9 @@
               <el-dropdown-item :command="`duplicate:${project.id}`" :icon="CopyDocument">
                 复制项目
               </el-dropdown-item>
-              <el-dropdown-item
-                :command="`archive:${project.id}`"
-                :icon="FolderOpened"
-                :disabled="project.status === 'archived'"
-              >
-                {{ project.status === 'archived' ? '已归档' : '归档' }}
+              <!-- 归档功能暂未实现 -->
+              <el-dropdown-item :command="`archive:${project.id}`" :icon="FolderOpened" disabled>
+                归档项目
               </el-dropdown-item>
               <el-dropdown-item
                 :command="`delete:${project.id}`"
@@ -75,11 +72,11 @@
           <el-text size="small" type="info">字数</el-text>
         </div>
         <div class="stat-item">
-          <el-text size="small">{{ formatNumber(project.total_paragraphs) }}</el-text>
+          <el-text size="small">{{ formatNumber(project.paragraph_count) }}</el-text>
           <el-text size="small" type="info">段落</el-text>
         </div>
-        <div class="stat-item" v-if="project.total_chapters > 0">
-          <el-text size="small">{{ formatNumber(project.total_chapters) }}</el-text>
+        <div class="stat-item" v-if="project.chapter_count > 0">
+          <el-text size="small">{{ formatNumber(project.chapter_count) }}</el-text>
           <el-text size="small" type="info">章节</el-text>
         </div>
       </div>
@@ -93,27 +90,10 @@
         >
           {{ getStatusText(project.status) }}
         </el-tag>
-
-        <el-tag
-          :type="getFileStatusType(project.file_processing_status)"
-          size="small"
-          effect="plain"
-        >
-          {{ getFileStatusText(project.file_processing_status) }}
-        </el-tag>
-
-        <el-tag
-          v-if="project.is_public"
-          type="info"
-          size="small"
-          effect="plain"
-        >
-          公开
-        </el-tag>
       </div>
 
       <!-- 处理进度条 -->
-      <div v-if="project.file_processing_status === 'processing'" class="progress-section">
+      <div v-if="project.status === 'parsing' || project.status === 'generating'" class="progress-section">
         <el-progress
           :percentage="project.processing_progress || 0"
           :show-text="false"
@@ -257,44 +237,22 @@ const handleCommand = (command) => {
 
 const getStatusType = (status) => {
   const typeMap = {
-    draft: 'info',
-    processing: 'warning',
-    completed: 'success',
-    failed: 'danger',
-    archived: 'info'
-  }
-  return typeMap[status] || 'info'
-}
-
-const getStatusText = (status) => {
-  const textMap = {
-    draft: '草稿',
-    processing: '处理中',
-    completed: '已完成',
-    failed: '失败',
-    archived: '已归档'
-  }
-  return textMap[status] || status
-}
-
-const getFileStatusType = (status) => {
-  const typeMap = {
-    pending: 'info',
-    uploading: 'warning',
-    uploaded: 'success',
-    processing: 'warning',
+    uploaded: 'info',
+    parsing: 'warning',
+    parsed: 'success',
+    generating: 'warning',
     completed: 'success',
     failed: 'danger'
   }
   return typeMap[status] || 'info'
 }
 
-const getFileStatusText = (status) => {
+const getStatusText = (status) => {
   const textMap = {
-    pending: '等待',
-    uploading: '上传中',
     uploaded: '已上传',
-    processing: '处理中',
+    parsing: '解析中',
+    parsed: '解析完成',
+    generating: '生成中',
     completed: '已完成',
     failed: '失败'
   }

@@ -1,5 +1,5 @@
 /**
- * 项目管理服务
+ * 项目管理服务 - 简洁实现，严格按照规范
  */
 
 import { get, post, put, del } from './api'
@@ -48,88 +48,15 @@ export const projectsService = {
   /**
    * 删除项目
    * @param {string} projectId - 项目ID
-   * @param {Object} params - 删除参数
    * @returns {Promise} 删除结果
    */
-  async deleteProject(projectId, params = {}) {
-    return await del(`/projects/${projectId}`, { params })
-  },
-
-  /**
-   * 恢复已删除的项目
-   * @param {string} projectId - 项目ID
-   * @returns {Promise} 恢复结果
-   */
-  async restoreProject(projectId) {
-    return await post(`/projects/${projectId}/restore`)
-  },
-
-  /**
-   * 搜索项目
-   * @param {Object} searchParams - 搜索参数
-   * @returns {Promise} 搜索结果
-   */
-  async searchProjects(searchParams) {
-    const { q, filters = {}, page = 1, size = 20 } = searchParams
-
-    const params = {
-      q,
-      page,
-      size,
-      ...filters
-    }
-
-    return await get('/projects/search', { params })
-  },
-
-  /**
-   * 获取项目统计信息
-   * @returns {Promise} 统计数据
-   */
-  async getProjectStatistics() {
-    return await get('/projects/statistics/summary')
-  },
-
-  /**
-   * 下载项目文件
-   * @param {string} projectId - 项目ID
-   * @returns {Promise} 文件下载响应
-   */
-  async downloadProjectFile(projectId) {
-    return await get(`/projects/${projectId}/download`)
-  },
-
-  /**
-   * 复制项目
-   * @param {string} projectId - 项目ID
-   * @param {Object} copyData - 复制参数
-   * @returns {Promise} 复制结果
-   */
-  async duplicateProject(projectId, copyData) {
-    return await post(`/projects/${projectId}/duplicate`, copyData)
-  },
-
-  /**
-   * 归档项目
-   * @param {string} projectId - 项目ID
-   * @returns {Promise} 归档结果
-   */
-  async archiveProject(projectId) {
-    return await post(`/projects/${projectId}/archive`)
-  },
-
-  /**
-   * 取消归档项目
-   * @param {string} projectId - 项目ID
-   * @returns {Promise} 取消归档结果
-   */
-  async unarchiveProject(projectId) {
-    return await post(`/projects/${projectId}/unarchive`)
+  async deleteProject(projectId) {
+    return await del(`/projects/${projectId}`)
   }
 }
 
 /**
- * 项目状态工具
+ * 项目状态工具 - 简洁实现，匹配后端数据模型
  */
 export const projectUtils = {
   /**
@@ -139,11 +66,12 @@ export const projectUtils = {
    */
   getStatusText(status) {
     const statusMap = {
-      'draft': '草稿',
-      'processing': '处理中',
+      'uploaded': '已上传',
+      'parsing': '解析中',
+      'parsed': '解析完成',
+      'generating': '生成中',
       'completed': '已完成',
-      'failed': '失败',
-      'archived': '已归档'
+      'failed': '失败'
     }
     return statusMap[status] || status
   },
@@ -155,43 +83,10 @@ export const projectUtils = {
    */
   getStatusType(status) {
     const typeMap = {
-      'draft': 'info',
-      'processing': 'warning',
-      'completed': 'success',
-      'failed': 'danger',
-      'archived': 'info'
-    }
-    return typeMap[status] || 'info'
-  },
-
-  /**
-   * 获取文件处理状态文本
-   * @param {string} status - 处理状态
-   * @returns {string} 状态文本
-   */
-  getProcessingStatusText(status) {
-    const statusMap = {
-      'pending': '等待',
-      'uploading': '上传中',
-      'uploaded': '已上传',
-      'processing': '处理中',
-      'completed': '已完成',
-      'failed': '失败'
-    }
-    return statusMap[status] || status
-  },
-
-  /**
-   * 获取文件处理状态类型
-   * @param {string} status - 处理状态
-   * @returns {string} Element Plus状态类型
-   */
-  getProcessingStatusType(status) {
-    const typeMap = {
-      'pending': 'info',
-      'uploading': 'warning',
-      'uploaded': 'success',
-      'processing': 'warning',
+      'uploaded': 'info',
+      'parsing': 'warning',
+      'parsed': 'success',
+      'generating': 'warning',
       'completed': 'success',
       'failed': 'danger'
     }
@@ -246,17 +141,13 @@ export const projectUtils = {
   calculateProgress(project) {
     if (project.status === 'completed') {
       return 100
-    } else if (project.status === 'processing') {
-      return project.processing_progress || 0
-    } else if (project.file_processing_status === 'completed') {
-      return 80
-    } else if (project.file_processing_status === 'processing') {
-      return 60 + (project.processing_progress || 0) * 0.4
-    } else if (project.file_processing_status === 'uploaded') {
-      return 60
-    } else if (project.file_processing_status === 'uploading') {
-      return 20 + (project.processing_progress || 0) * 0.4
-    } else if (project.file_processing_status === 'pending') {
+    } else if (project.status === 'generating') {
+      return project.processing_progress || 50
+    } else if (project.status === 'parsed') {
+      return 40
+    } else if (project.status === 'parsing') {
+      return 20
+    } else if (project.status === 'uploaded') {
       return 10
     } else {
       return 0
@@ -269,7 +160,7 @@ export const projectUtils = {
    * @returns {boolean} 是否可编辑
    */
   isEditable(project) {
-    return project.status !== 'processing' && project.file_processing_status !== 'processing'
+    return !['parsing', 'generating'].includes(project.status)
   },
 
   /**
@@ -278,7 +169,7 @@ export const projectUtils = {
    * @returns {boolean} 是否可删除
    */
   isDeletable(project) {
-    return project.status !== 'processing' && project.file_processing_status !== 'processing'
+    return !['parsing', 'generating'].includes(project.status)
   },
 
   /**
@@ -288,45 +179,14 @@ export const projectUtils = {
    */
   getStatusIcon(status) {
     const iconMap = {
-      'draft': 'Edit',
-      'processing': 'Loading',
-      'completed': 'CircleCheck',
-      'failed': 'CircleClose',
-      'archived': 'FolderOpened'
+      'uploaded': 'Upload',
+      'parsing': 'Loading',
+      'parsed': 'CircleCheck',
+      'generating': 'VideoPlay',
+      'completed': 'SuccessFilled',
+      'failed': 'CircleClose'
     }
     return iconMap[status] || 'Document'
-  }
-}
-
-// 保持与现有代码的兼容性，导出原有API
-export const projectsAPI = {
-  getProjects: projectsService.getProjects,
-  searchProjects: projectsService.searchProjects,
-  getProjectById: projectsService.getProjectById,
-  createProject: projectsService.createProject,
-  updateProject: projectsService.updateProject,
-  deleteProject: projectsService.deleteProject,
-  restoreProject: projectsService.restoreProject,
-  getProjectStatistics: projectsService.getProjectStatistics,
-  downloadProject: projectsService.downloadProjectFile,
-  duplicateProject: projectsService.duplicateProject
-}
-
-export const filesAPI = {
-  cleanupOrphanedFiles: async (params = {}) => {
-    return await del('/files/cleanup/orphaned', { params })
-  },
-  getStorageUsage: async () => {
-    return await get('/files/storage/usage')
-  },
-  listUserFiles: async (params = {}) => {
-    return await get('/files/list', { params })
-  },
-  batchDeleteFiles: async (objectKeys) => {
-    return await post('/files/batch-delete', { object_keys: objectKeys })
-  },
-  checkFileIntegrity: async (params = {}) => {
-    return await get('/files/integrity/check', { params })
   }
 }
 

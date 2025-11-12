@@ -164,7 +164,7 @@ import {
   Document,
   Delete,
 } from '@element-plus/icons-vue'
-import { uploadService } from '@/services/upload'
+import { fileService } from '@/services/upload'
 
 // Props定义
 const props = defineProps({
@@ -196,11 +196,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  projectData: {
-    type: Object,
-    default: () => ({}),
-  },
-})
+  })
 
 // Emits定义
 const emit = defineEmits([
@@ -343,15 +339,8 @@ const uploadFiles = async () => {
       try {
         const formData = new FormData()
         formData.append('file', fileItem.file)
-        formData.append('title', props.projectData.title || fileItem.name.replace(/\.[^/.]+$/, ''))
 
-        if (props.projectData.description) {
-          formData.append('description', props.projectData.description)
-        }
-
-        formData.append('auto_process', 'true')
-
-        const response = await uploadService.uploadFile(formData, (progress) => {
+        const response = await fileService.uploadFile(formData, (progress) => {
           fileItem.progress = progress
           uploadProgress.value = Math.round(
             fileList.value.reduce((sum, f) => sum + f.progress, 0) / fileList.value.length

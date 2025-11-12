@@ -54,11 +54,8 @@
                   >
                     {{ project.status === 'archived' ? '已归档' : '归档' }}
                   </el-dropdown-item>
-                  <el-dropdown-item
-                    :command="`reprocess:${project.id}`"
-                    :icon="Refresh"
-                    :disabled="project.file_processing_status === 'processing'"
-                  >
+                  <!-- 重新处理功能暂未实现 -->
+                  <el-dropdown-item :command="`reprocess:${project.id}`" :icon="Refresh" disabled>
                     重新处理
                   </el-dropdown-item>
                   <el-dropdown-item
@@ -85,9 +82,7 @@
               <el-tag :type="getStatusType(project.status)" effect="plain">
                 {{ getStatusText(project.status) }}
               </el-tag>
-              <el-tag :type="getFileStatusType(project.file_processing_status)" effect="plain">
-                {{ getFileStatusText(project.file_processing_status) }}
-              </el-tag>
+              <!-- 文件状态已合并到主状态标签中 -->
               <el-tag v-if="project.is_public" type="info" effect="plain">
                 公开
               </el-tag>
@@ -134,19 +129,19 @@
                 </el-col>
                 <el-col :span="6">
                   <div class="stat-item">
-                    <div class="stat-value">{{ formatNumber(project.total_paragraphs) }}</div>
+                    <div class="stat-value">{{ formatNumber(project.paragraph_count) }}</div>
                     <div class="stat-label">段落数</div>
                   </div>
                 </el-col>
                 <el-col :span="6">
                   <div class="stat-item">
-                    <div class="stat-value">{{ formatNumber(project.total_sentences) }}</div>
+                    <div class="stat-value">{{ formatNumber(project.sentence_count) }}</div>
                     <div class="stat-label">句子数</div>
                   </div>
                 </el-col>
-                <el-col :span="6" v-if="project.total_chapters > 0">
+                <el-col :span="6" v-if="project.chapter_count > 0">
                   <div class="stat-item">
-                    <div class="stat-value">{{ formatNumber(project.total_chapters) }}</div>
+                    <div class="stat-value">{{ formatNumber(project.chapter_count) }}</div>
                     <div class="stat-label">章节数</div>
                   </div>
                 </el-col>
@@ -157,7 +152,7 @@
           <!-- 右侧信息 -->
           <el-col :span="8">
             <!-- 处理进度 -->
-            <div v-if="project.file_processing_status === 'processing'" class="progress-card">
+            <div v-if="project.status === 'parsing' || project.status === 'generating'" class="progress-card">
               <h3>处理进度</h3>
               <el-progress
                 type="circle"
@@ -412,7 +407,7 @@ const handleDelete = async () => {
 }
 
 const handleStartGeneration = () => {
-  if (props.project.file_processing_status !== 'completed') {
+  if (!['completed', 'parsed'].includes(props.project.status)) {
     ElMessage.warning('文件处理完成后才能开始视频生成')
     return
   }
@@ -437,44 +432,22 @@ const handleRefresh = async () => {
 // 工具方法
 const getStatusType = (status) => {
   const typeMap = {
-    draft: 'info',
-    processing: 'warning',
-    completed: 'success',
-    failed: 'danger',
-    archived: 'info'
-  }
-  return typeMap[status] || 'info'
-}
-
-const getStatusText = (status) => {
-  const textMap = {
-    draft: '草稿',
-    processing: '处理中',
-    completed: '已完成',
-    failed: '失败',
-    archived: '已归档'
-  }
-  return textMap[status] || status
-}
-
-const getFileStatusType = (status) => {
-  const typeMap = {
-    pending: 'info',
-    uploading: 'warning',
-    uploaded: 'success',
-    processing: 'warning',
+    uploaded: 'info',
+    parsing: 'warning',
+    parsed: 'success',
+    generating: 'warning',
     completed: 'success',
     failed: 'danger'
   }
   return typeMap[status] || 'info'
 }
 
-const getFileStatusText = (status) => {
+const getStatusText = (status) => {
   const textMap = {
-    pending: '等待',
-    uploading: '上传中',
     uploaded: '已上传',
-    processing: '处理中',
+    parsing: '解析中',
+    parsed: '解析完成',
+    generating: '生成中',
     completed: '已完成',
     failed: '失败'
   }

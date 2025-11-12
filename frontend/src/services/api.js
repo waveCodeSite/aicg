@@ -98,9 +98,16 @@ export const del = (url, config) => api.delete(url, config)
 export const patch = (url, data, config) => api.patch(url, data, config)
 
 // 文件上传方法
-export const upload = (url, file, config = {}) => {
-  const formData = new FormData()
-  formData.append('file', file)
+export const upload = (url, data, config = {}) => {
+  // 如果data是FormData对象，直接使用
+  // 如果是File对象，包装成FormData
+  let formData
+  if (data instanceof FormData) {
+    formData = data
+  } else {
+    formData = new FormData()
+    formData.append('file', data)
+  }
 
   const uploadConfig = {
     headers: {

@@ -1,19 +1,17 @@
 /**
- * 项目管理状态管理
+ * 项目管理状态管理 - 简洁实现，严格按照规范
  * 使用Pinia管理项目相关的状态
  */
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { projectsAPI, filesAPI, projectUtils } from '@/services/projects'
-import { uploadService, uploadManager } from '@/services/upload'
+import { projectsService, projectUtils } from '@/services/projects'
 
 export const useProjectsStore = defineStore('projects', () => {
   // 状态定义
   const projects = ref([])
   const currentProject = ref(null)
-  const statistics = ref(null)
   const loading = ref(false)
   const error = ref(null)
 
@@ -30,19 +28,6 @@ export const useProjectsStore = defineStore('projects', () => {
   const statusFilter = ref('')
   const sortBy = ref('created_at')
   const sortOrder = ref('desc')
-
-  // 文件内容状态
-  const fileContent = ref('')
-  const contentLoading = ref(false)
-  const contentError = ref(null)
-
-  // 上传任务状态
-  const uploadTasks = ref([])
-  const activeUploads = computed(() => {
-    return uploadTasks.value.filter(task =>
-      task.status === 'pending' || task.status === 'uploading'
-    )
-  })
 
   // 计算属性
   const filteredProjects = computed(() => {
@@ -82,7 +67,7 @@ export const useProjectsStore = defineStore('projects', () => {
 
   const hasUnprocessedFiles = computed(() => {
     return projects.value.some(project =>
-      project.file_processing_status !== 'completed'
+      !['completed', 'failed'].includes(project.status)
     )
   })
 
@@ -100,13 +85,13 @@ export const useProjectsStore = defineStore('projects', () => {
         page: pagination.value.page,
         size: pagination.value.size,
         search: searchQuery.value,
-        status: statusFilter.value,
+        project_status: statusFilter.value,
         sort_by: sortBy.value,
         sort_order: sortOrder.value,
         ...params
       }
 
-      const response = await projectsAPI.getProjects(queryParams)
+      const response = await projectsService.getProjects(queryParams)
 
       projects.value = response.projects || []
       pagination.value = {
@@ -136,7 +121,7 @@ export const useProjectsStore = defineStore('projects', () => {
       loading.value = true
       error.value = null
 
-      const project = await projectsAPI.getProjectById(projectId)
+      const project = await projectsService.getProjectById(projectId)
       currentProject.value = project
 
       // 更新列表中的项目数据
@@ -165,7 +150,7 @@ export const useProjectsStore = defineStore('projects', () => {
       loading.value = true
       error.value = null
 
-      const project = await projectsAPI.createProject(projectData)
+      const project = await projectsService.createProject(projectData)
 
       // 添加到列表开头
       projects.value.unshift(project)
@@ -193,7 +178,7 @@ export const useProjectsStore = defineStore('projects', () => {
       loading.value = true
       error.value = null
 
-      const updatedProject = await projectsAPI.updateProject(projectId, updateData)
+      const updatedProject = await projectsService.updateProject(projectId, updateData)
 
       // 更新列表中的项目
       const index = projects.value.findIndex(p => p.id === projectId)
@@ -221,14 +206,13 @@ export const useProjectsStore = defineStore('projects', () => {
   /**
    * 删除项目
    * @param {string} projectId - 项目ID
-   * @param {boolean} permanent - 是否永久删除
    */
-  const deleteProject = async (projectId, permanent = false) => {
+  const deleteProject = async (projectId) => {
     try {
       loading.value = true
       error.value = null
 
-      await projectsAPI.deleteProject(projectId, permanent)
+      await projectsService.deleteProject(projectId)
 
       // 从列表中移除
       const index = projects.value.findIndex(p => p.id === projectId)
@@ -254,90 +238,6 @@ export const useProjectsStore = defineStore('projects', () => {
   }
 
   /**
-   * 下载项目文件
-   * @param {string} projectId - 项目ID
-   */
-  const downloadProject = async (projectId) => {
-    try {
-      const response = await projectsAPI.downloadProject(projectId)
-
-      if (response.download_url) {
-        // 创建下载链接
-        const link = document.createElement('a')
-        link.href = response.download_url
-        link.download = response.filename || `project_${projectId}`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
-
-      return response
-
-    } catch (err) {
-      error.value = err.message || '下载文件失败'
-      ElMessage.error(error.value)
-      throw err
-    }
-  }
-
-  /**
-   * 重新处理项目文件
-   * @param {string} projectId - 项目ID
-   */
-  const reprocessProject = async (projectId) => {
-    try {
-      loading.value = true
-      error.value = null
-
-      await uploadService.reprocessFile(projectId)
-
-      // 更新项目状态
-      const index = projects.value.findIndex(p => p.id === projectId)
-      if (index !== -1) {
-        projects.value[index].file_processing_status = 'processing'
-        projects.value[index].processing_progress = 0
-      }
-
-      if (currentProject.value?.id === projectId) {
-        currentProject.value.file_processing_status = 'processing'
-        currentProject.value.processing_progress = 0
-      }
-
-      ElMessage.success('重新处理请求已发送')
-
-    } catch (err) {
-      error.value = err.message || '重新处理失败'
-      ElMessage.error(error.value)
-      throw err
-    } finally {
-      loading.value = false
-    }
-  }
-
-  /**
-   * 获取项目文件内容
-   * @param {string} projectId - 项目ID
-   */
-  const fetchProjectContent = async (projectId) => {
-    try {
-      contentLoading.value = true
-      contentError.value = null
-
-      // 临时实现：返回模拟内容
-      fileContent.value = `文件内容预览功能正在开发中...`
-
-      return fileContent.value
-
-    } catch (err) {
-      contentError.value = err.message || '获取文件内容失败'
-      ElMessage.error(contentError.value)
-      throw err
-    } finally {
-      contentLoading.value = false
-    }
-  }
-
-  /**
    * 设置搜索条件
    * @param {Object} filters - 过滤条件
    */
@@ -354,14 +254,10 @@ export const useProjectsStore = defineStore('projects', () => {
   const resetState = () => {
     projects.value = []
     currentProject.value = null
-    statistics.value = null
     loading.value = false
     error.value = null
     searchQuery.value = ''
     statusFilter.value = ''
-    fileContent.value = ''
-    contentLoading.value = false
-    contentError.value = null
     pagination.value = {
       page: 1,
       size: 20,
@@ -370,14 +266,10 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
-  // 向后兼容的方法名称
-  const fetchProject = fetchProjectById
-
   return {
     // 状态
     projects,
     currentProject,
-    statistics,
     loading,
     error,
     pagination,
@@ -385,39 +277,31 @@ export const useProjectsStore = defineStore('projects', () => {
     statusFilter,
     sortBy,
     sortOrder,
-    fileContent,
-    contentLoading,
-    contentError,
-    uploadTasks,
 
     // 计算属性
     filteredProjects,
     projectsByStatus,
     recentProjects,
     hasUnprocessedFiles,
-    activeUploads,
 
-    // 方法（包含向后兼容的别名）
+    // 方法
     fetchProjects,
-    fetchProject, // 向后兼容
-    fetchProjectById, // 新方法
+    fetchProjectById,
     createProject,
     updateProject,
     deleteProject,
-    downloadProject,
-    reprocessProject,
-    fetchProjectContent,
     setFilters,
     resetState,
 
     // 工具函数
-    formatProjectStatus: projectUtils.formatProjectStatus,
-    formatFileStatus: projectUtils.formatFileStatus,
-    formatFileType: projectUtils.formatFileType,
-    formatNumber: projectUtils.formatNumber,
+    getStatusText: projectUtils.getStatusText,
+    getStatusType: projectUtils.getStatusType,
+    getStatusIcon: projectUtils.getStatusIcon,
+    calculateProgress: projectUtils.calculateProgress,
+    isEditable: projectUtils.isEditable,
+    isDeletable: projectUtils.isDeletable,
     formatFileSize: projectUtils.formatFileSize,
     formatDateTime: projectUtils.formatDateTime,
-    formatRelativeTime: projectUtils.formatRelativeTime,
-    canPerformOperation: projectUtils.canPerformOperation
+    formatNumber: projectUtils.formatNumber
   }
 })

@@ -11,7 +11,6 @@ from typing import Optional, Tuple, Dict, Any
 from fastapi import UploadFile, HTTPException
 
 from src.core.logging import get_logger
-from src.models.project import SupportedFileType, FileProcessingStatus
 
 logger = get_logger(__name__)
 
@@ -22,32 +21,32 @@ class FileProcessingError(Exception):
 
 
 class FileHandler:
-    """文件处理器"""
+    """文件处理器 - 按照specification规范实现"""
 
     # 支持的文件类型和MIME类型映射
     SUPPORTED_MIME_TYPES = {
-        'text/plain': SupportedFileType.TXT,
-        'text/markdown': SupportedFileType.MD,
-        'text/x-markdown': SupportedFileType.MD,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': SupportedFileType.DOCX,
-        'application/epub+zip': SupportedFileType.EPUB,
+        'text/plain': 'txt',
+        'text/markdown': 'md',
+        'text/x-markdown': 'md',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+        'application/epub+zip': 'epub',
     }
 
     # 文件扩展名映射
     SUPPORTED_EXTENSIONS = {
-        '.txt': SupportedFileType.TXT,
-        '.md': SupportedFileType.MD,
-        '.markdown': SupportedFileType.MD,
-        '.docx': SupportedFileType.DOCX,
-        '.epub': SupportedFileType.EPUB,
+        '.txt': 'txt',
+        '.md': 'md',
+        '.markdown': 'md',
+        '.docx': 'docx',
+        '.epub': 'epub',
     }
 
     # 最大文件大小 (50MB)
     MAX_FILE_SIZE = 50 * 1024 * 1024
 
     @classmethod
-    def get_file_type_from_extension(cls, filename: str) -> Optional[SupportedFileType]:
-        """从文件扩展名获取文件类型"""
+    def get_file_type_from_extension(cls, filename: str) -> Optional[str]:
+        """从文件扩展名获取文件类型 - 按照specification规范实现"""
         if not filename:
             return None
 
@@ -55,12 +54,12 @@ class FileHandler:
         return cls.SUPPORTED_EXTENSIONS.get(ext)
 
     @classmethod
-    def get_file_type_from_mime(cls, mime_type: str) -> Optional[SupportedFileType]:
-        """从MIME类型获取文件类型"""
+    def get_file_type_from_mime(cls, mime_type: str) -> Optional[str]:
+        """从MIME类型获取文件类型 - 按照specification规范实现"""
         return cls.SUPPORTED_MIME_TYPES.get(mime_type)
 
     @classmethod
-    async def validate_file(cls, file: UploadFile) -> Tuple[SupportedFileType, Dict[str, Any]]:
+    async def validate_file(cls, file: UploadFile) -> Tuple[str, Dict[str, Any]]:
         """
         验证上传的文件
 
@@ -106,7 +105,7 @@ class FileHandler:
 
         # 验证文件类型一致性
         if file_type_mime and file_type_mime != file_type_ext:
-            logger.warning(f"文件类型不匹配: 扩展名={file_type_ext.value}, MIME={file_type_mime.value if file_type_mime else mime_type}")
+            logger.warning(f"文件类型不匹配: 扩展名={file_type_ext}, MIME={file_type_mime or mime_type}")
             # 以MIME类型为准，如果支持的话
             if file_type_mime in cls.SUPPORTED_EXTENSIONS.values():
                 file_type = file_type_mime
@@ -124,7 +123,7 @@ class FileHandler:
             'size': file_size,
             'content_type': file.content_type,
             'detected_mime': mime_type,
-            'file_type': file_type.value,
+            'file_type': file_type,
             'file_hash': file_hash,
         }
 
@@ -380,18 +379,18 @@ class EpubFileHandler:
 
 
 # 文件处理器工厂
-def get_file_handler(file_type: SupportedFileType):
-    """获取对应的文件处理器"""
+def get_file_handler(file_type: str):
+    """获取对应的文件处理器 - 按照specification规范实现"""
     handlers = {
-        SupportedFileType.TXT: TextFileHandler,
-        SupportedFileType.MD: MarkdownFileHandler,
-        SupportedFileType.DOCX: DocxFileHandler,
-        SupportedFileType.EPUB: EpubFileHandler,
+        'txt': TextFileHandler,
+        'md': MarkdownFileHandler,
+        'docx': DocxFileHandler,
+        'epub': EpubFileHandler,
     }
 
     handler = handlers.get(file_type)
     if not handler:
-        raise FileProcessingError(f"不支持的文件类型: {file_type.value}")
+        raise FileProcessingError(f"不支持的文件类型: {file_type}")
 
     return handler
 

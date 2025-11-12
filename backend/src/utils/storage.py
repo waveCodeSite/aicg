@@ -109,8 +109,12 @@ class MinIOStorage:
             if metadata is None:
                 metadata = {}
 
+            # 对文件名进行ASCII编码以支持中文字符
+            import urllib.parse
+            encoded_filename = urllib.parse.quote(file.filename or "", safe="") if file.filename else ""
+
             metadata.update({
-                "original_filename": file.filename or "",
+                "original_filename": encoded_filename,
                 "content_type": file.content_type or "application/octet-stream",
                 "upload_time": datetime.now().isoformat(),
                 "user_id": user_id,
@@ -182,9 +186,13 @@ class MinIOStorage:
             # 获取文件大小
             file_size = Path(file_path).stat().st_size
 
+            # 对文件名进行ASCII编码以支持中文字符
+            import urllib.parse
+            encoded_filename = urllib.parse.quote(original_filename or "", safe="")
+
             # 准备元数据
             metadata.update({
-                "original_filename": original_filename,
+                "original_filename": encoded_filename,
                 "content_type": "application/octet-stream",
                 "upload_time": datetime.now().isoformat(),
                 "user_id": user_id,

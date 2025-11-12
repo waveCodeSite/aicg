@@ -119,7 +119,8 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled, Document, Delete, Loading } from '@element-plus/icons-vue'
-import { fileService, projectService } from '@/services/upload'
+import { fileService } from '@/services/upload'
+import { projectsService } from '@/services/projects'
 
 // Props定义
 const props = defineProps({
@@ -198,22 +199,29 @@ const handleFileChange = async (file) => {
     selectedFile.value = file.raw
     uploading.value = true
 
-    // 自动从文件名提取标题
-    if (file.raw && file.raw.name) {
-      const nameWithoutExt = file.raw.name.replace(/\.[^/.]+$/, "")
-      formData.title = nameWithoutExt
-    }
-
     // 创建FormData并上传文件
-    const formData = new FormData()
-    formData.append('file', file.raw)
+    const uploadFormData = new FormData()
+    uploadFormData.append('file', file.raw)
 
-    const uploadResult = await fileService.uploadFile(formData, (percent) => {
+    const uploadResult = await fileService.uploadFile(uploadFormData, (percent) => {
       console.log(`上传进度: ${percent}%`)
     })
 
     if (uploadResult.success) {
       uploadedFileInfo.value = uploadResult.data
+
+      // 自动从文件名提取标题（在上传成功后设置）
+      if (file.raw && file.raw.name) {
+        // 移除文件扩展名
+        let nameWithoutExt = file.raw.name.replace(/\.[^/.]+$/, "")
+        // 替换常见的分隔符为空格
+        nameWithoutExt = nameWithoutExt.replace(/[-_]/g, " ")
+        // 移除多余的空格
+        nameWithoutExt = nameWithoutExt.replace(/\s+/g, " ").trim()
+        // 设置为表单标题
+        formData.title = nameWithoutExt
+      }
+
       ElMessage.success('文件上传成功')
     } else {
       throw new Error(uploadResult.message || '文件上传失败')
@@ -260,19 +268,16 @@ const beforeUpload = (file) => {
 
 const removeFile = async () => {
   try {
-    // 如果已经上传了文件，尝试删除
-    if (uploadedFileInfo.value && uploadedFileInfo.value.file_id) {
-      await fileService.deleteFile(uploadedFileInfo.value.file_id)
-    }
-  } catch (error) {
-    console.warn('删除已上传文件失败:', error)
-  } finally {
+    // 清理状态，删除逻辑暂时简化
     selectedFile.value = null
     uploadedFileInfo.value = null
     formData.title = ''
     if (uploadRef.value) {
       uploadRef.value.clearFiles()
     }
+    ElMessage.info('文件已移除')
+  } catch (error) {
+    console.error('移除文件失败:', error)
   }
 }
 
@@ -283,22 +288,26 @@ const handleSubmit = async () => {
     if (!valid) return
 
     // 检查是否上传了文件
-    if (!uploadedFileInfo.value || !uploadedFileInfo.value.file_id) {
+    if (!uploadedFileInfo.value || !uploadedFileInfo.value.storage_key) {
       ElMessage.warning('请先上传文件')
       return
     }
 
     submitting.value = true
 
-    // 准备项目数据
+    // 准备项目数据 - 使用文件信息创建项目
     const projectData = {
-      file_id: uploadedFileInfo.value.file_id,
       title: formData.title.trim(),
-      description: formData.description.trim()
+      description: formData.description.trim(),
+      file_name: uploadedFileInfo.value.original_filename,
+      file_size: uploadedFileInfo.value.file_size,
+      file_type: uploadedFileInfo.value.file_type,
+      file_path: uploadedFileInfo.value.storage_key,
+      file_hash: uploadedFileInfo.value.file_info?.file_hash
     }
 
-    // 调用新的API创建项目
-    const result = await projectService.createProjectWithFile(projectData)
+    // 调用项目API创建项目
+    const result = await projectsService.createProject(projectData)
 
     ElMessage.success('项目创建成功')
     emit('submit', result)
@@ -317,15 +326,7 @@ const handleCancel = () => {
 }
 
 const resetForm = async () => {
-  // 尝试清理已上传的文件
-  if (uploadedFileInfo.value && uploadedFileInfo.value.file_id) {
-    try {
-      await fileService.deleteFile(uploadedFileInfo.value.file_id)
-    } catch (error) {
-      console.warn('清理上传文件失败:', error)
-    }
-  }
-
+  // 重置表单状态
   selectedFile.value = null
   uploadedFileInfo.value = null
   formData.title = ''
