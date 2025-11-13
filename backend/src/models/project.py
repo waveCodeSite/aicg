@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Dict
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text
+from sqlalchemy.orm import relationship
 
 from src.models.base import BaseModel
 
@@ -56,7 +57,7 @@ class Project(BaseModel):
     completed_at = Column(DateTime, nullable=True, comment="完成时间")
 
     # 关系定义 - 按照data-model.md规范
-    # chapters = relationship("Chapter", back_populates="project", cascade="all, delete-orphan")
+    chapters = relationship("Chapter", back_populates="project", cascade="all, delete-orphan")
     # generation_tasks = relationship("GenerationTask", back_populates="project", cascade="all, delete-orphan")
 
     # 索引定义 - 按照data-model.md规范
