@@ -6,17 +6,24 @@
 - 章节段落句子数据保存
 - 项目状态和进度跟踪
 - 数据清理和统计更新
+- 文件内容获取和错误处理
+- 失败项目重试机制
+- 系统健康检查
 
 设计原则：
 - 使用SessionManagedService独立管理会话
 - 协调多个服务完成复杂业务流程
 - 提供完整的处理状态跟踪
 - 异常处理和回滚机制
+- 统一的文件处理接口
 """
 
+import tempfile
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
+from src.core.database import get_async_db
 from src.core.exceptions import NotFoundError
 from src.core.logging import get_logger
 from src.models.chapter import Chapter
@@ -24,36 +31,50 @@ from src.models.paragraph import Paragraph
 from src.models.project import Project, ProjectStatus
 from src.models.sentence import Sentence
 from src.services.base import SessionManagedService
+from src.utils.encoding_detector import decode_file_content
+from src.utils.file_handlers import get_file_handler
+from src.utils.storage import get_storage_client
 
 logger = get_logger(__name__)
 
 
 class ProjectProcessingService(SessionManagedService):
     """
-    项目文件处理服务
+    项目文件处理服务 - 统一的项目处理接口
 
-    负责协调文本解析和数据保存的完整流程，包括：
-    1. 获取项目信息
-    2. 清理已有数据
-    3. 更新处理状态
-    4. 解析文本内容
-    5. 保存解析结果
-    6. 更新统计信息
+    核心功能：
+    1. 文件处理流程管理 - 从文件获取到数据存储的完整流程
+    2. 文本解析协调 - 集成多种文本解析策略
+    3. 状态跟踪管理 - 实时进度更新和错误处理
+    4. 数据持久化 - 批量操作和事务管理
+    5. 系统健康检查 - 多组件状态监控
 
-    该服务独立管理数据库会话，适用于后台任务和批处理场景。
+    设计特点：
+    - 会话自管理：使用 SessionManagedService 独立管理数据库会话
+    - 异步优先：所有操作都是异步的，支持高并发
+    - 容错设计：完善的错误处理和恢复机制
+    - 可观测性：详细的日志记录和状态跟踪
+    - 可扩展性：模块化设计便于功能扩展
     """
 
     def __init__(self):
-        super().__init__()  # 调用父类初始化方法
-        self.text_parser_service = None
-        # 延迟导入text_parser_service避免循环依赖
+        super().__init__()
+        self._text_parser_service = None
+        self._storage_client = None
+        # 延迟导入避免循环依赖和初始化开销
 
     async def _get_text_parser_service(self):
         """延迟导入text_parser_service"""
-        if self.text_parser_service is None:
+        if self._text_parser_service is None:
             from src.services.text_parser import text_parser_service
-            self.text_parser_service = text_parser_service
-        return self.text_parser_service
+            self._text_parser_service = text_parser_service
+        return self._text_parser_service
+
+    async def _get_storage_client(self):
+        """延迟导入storage_client"""
+        if self._storage_client is None:
+            self._storage_client = await get_storage_client()
+        return self._storage_client
 
     async def process_uploaded_file(self, project_id: str, file_content: str) -> Dict:
         """
@@ -331,55 +352,213 @@ class ProjectProcessingService(SessionManagedService):
         await self.flush()
         logger.info(f"项目 {project.id} 统计信息更新完成: {chapter_count}章节, {len(paragraphs)}段落, {len(sentences)}句子, {total_word_count}字")
 
-    async def get_processing_status(self, project_id: str) -> Dict:
+    async def get_file_content(self, project_id: str) -> str:
         """
-        获取项目处理状态
+        获取项目文件内容
 
-        返回项目的详细状态信息，包括处理进度、统计数据和错误信息。
-        用于监控处理进度和状态查询。
+        从存储中下载文件并提取文本内容，支持多种文件格式。
+        使用临时文件处理大型文件，确保内存安全。
 
         Args:
             project_id: 项目ID
 
         Returns:
-            Dict[str, Any]: 状态信息，包含：
-                - success: 查询是否成功
+            str: 文件的文本内容
+
+        Raises:
+            NotFoundError: 当项目不存在或文件路径无效时
+            ValueError: 当文件无法读取或解码时
+        """
+        # 使用外部数据库会话获取项目信息
+        async with get_async_db() as db:
+            project = await db.get(Project, project_id)
+            if not project or not project.file_path:
+                raise ValueError(f"项目或文件路径无效: {project_id}")
+
+            # 从存储下载文件
+            storage = await self._get_storage_client()
+            data = await storage.download_file(project.file_path)
+
+            file_type = project.file_type
+            handler = get_file_handler(file_type)
+
+            # 创建临时文件处理
+            suffix = Path(project.file_path).suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as fp:
+                fp.write(data)
+                temp_path = fp.name
+
+            try:
+                # 尝试使用文件处理器读取
+                content = await handler.read_file(temp_path)
+                logger.info(f"成功读取文件 {project.file_path}，内容长度: {len(content)}")
+                return content
+            except Exception as e:
+                # 如果文件处理器失败，尝试直接解码
+                logger.warning(f"文件处理器读取失败，尝试直接解码: {e}")
+                try:
+                    content = decode_file_content(data, project.file_path)
+                    logger.info(f"成功解码文件 {project.file_path}，内容长度: {len(content)}")
+                    return content
+                except Exception as decode_error:
+                    logger.error(f"无法解码文件 {project.file_path}: {decode_error}")
+                    raise ValueError(f"无法解码文件: {project.file_path}")
+            finally:
+                # 清理临时文件
+                try:
+                    import os
+                    os.unlink(temp_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"清理临时文件失败: {cleanup_error}")
+
+    async def mark_failed_safely(self, project_id: str, owner_id: str, message: str) -> None:
+        """
+        安全地标记项目为失败状态
+
+        当主要处理流程失败时，使用此方法安全地更新项目状态。
+        即使在异常情况下也能确保状态更新，避免项目处于不一致状态。
+
+        Args:
+            project_id: 项目ID
+            owner_id: 项目所有者ID
+            message: 失败消息
+        """
+        from src.services.project import ProjectService
+
+        try:
+            # 使用外部数据库会话更新项目状态
+            async with get_async_db() as db:
+                service = ProjectService(db)
+                await service.mark_processing_failed(project_id, owner_id, message)
+                logger.info(f"项目 {project_id} 已标记为失败状态: {message}")
+        except Exception as e:
+            logger.error(f"更新项目失败状态时出错: {e}")
+            # 即使状态更新失败，也记录错误，但不抛出异常
+            # 这样可以避免掩盖原始的处理错误
+
+    async def process_file_task(self, project_id: str, owner_id: str) -> Dict[str, Any]:
+        """
+        完整的文件处理任务流程
+
+        该方法封装了文件处理的完整业务逻辑，包括：
+        - 项目验证
+        - 文件内容获取
+        - 文件处理
+        - 错误处理和状态管理
+
+        专门为 Celery 任务调用设计，提供完整的异常处理和状态管理。
+
+        Args:
+            project_id: 项目ID
+            owner_id: 项目所有者ID
+
+        Returns:
+            Dict[str, Any]: 处理结果，包含：
+                - success: 处理是否成功
                 - project_id: 项目ID
-                - status: 当前状态
-                - processing_progress: 处理进度百分比
                 - chapters_count: 章节数量
                 - paragraphs_count: 段落数量
                 - sentences_count: 句子数量
-                - word_count: 总字数
-                - error_message: 错误信息（如果有）
-                - created_at: 创建时间
-                - updated_at: 更新时间
-                - completed_at: 完成时间
+                - message: 处理结果消息
+                - error: 错误信息（如果失败）
 
         Raises:
-            NotFoundError: 当项目不存在时
+            Exception: 当处理失败时抛出异常，调用方应处理异常
         """
-        project = await self._get_project(project_id)
+        try:
+            logger.info(f"开始文件处理任务流程: project_id={project_id}, owner_id={owner_id}")
 
-        # 获取各层级的统计
-        chapter_count = await Chapter.count_by_project_id(self.db_session, project_id)
-        paragraphs = await Paragraph.get_by_project_id(self.db_session, project_id)
-        sentence_count = len(await Sentence.get_by_project_id(self.db_session, project_id))
+            # 1. 获取文件内容
+            content = await self.get_file_content(project_id)
 
-        return {
-            'success': True,
-            'project_id': project_id,
-            'status': project.status,
-            'processing_progress': project.processing_progress,
-            'chapters_count': chapter_count,
-            'paragraphs_count': len(paragraphs),
-            'sentences_count': sentence_count,
-            'word_count': project.word_count or 0,
-            'error_message': project.error_message,
-            'created_at': project.created_at.isoformat() if project.created_at else None,
-            'updated_at': project.updated_at.isoformat() if project.updated_at else None,
-            'completed_at': project.completed_at.isoformat() if project.completed_at else None,
-        }
+            # 2. 处理文件内容
+            async with self:
+                result = await self.process_uploaded_file(
+                    project_id=project_id,
+                    file_content=content
+                )
+
+            # 3. 验证处理结果
+            if not result.get("success", True):
+                error_msg = result.get("error", "文件处理失败")
+                raise Exception(error_msg)
+
+            logger.info(f"文件处理任务流程成功完成: project_id={project_id}")
+            return result
+
+        except Exception as e:
+            # 统一错误处理
+            error_message = f"文件处理失败: {e}"
+            logger.error(f"文件处理任务流程失败: project_id={project_id}, error={e}", exc_info=True)
+
+            # 尝试安全标记失败状态
+            await self.mark_failed_safely(project_id, owner_id, error_message)
+            raise
+
+    async def retry_failed_project(self, project_id: str, owner_id: str) -> Dict[str, Any]:
+        """
+        重试失败的项目处理
+
+        将失败状态的项目重置为上传状态，并重新启动处理流程。
+        只有处于失败状态的项目才能重试。
+
+        Args:
+            project_id: 项目ID
+            owner_id: 项目所有者ID
+
+        Returns:
+            Dict[str, Any]: 重试结果，包含：
+                - success: 重试是否成功
+                - message: 结果消息
+                - processing_result: 处理结果（如果重试成功）
+
+        Raises:
+            ValueError: 当项目不存在或状态不允许重试时
+        """
+        from src.services.project import ProjectService
+
+        # 验证项目状态并重置
+        async with get_async_db() as db:
+            service = ProjectService(db)
+            project = await service.get_project_by_id(project_id, owner_id)
+
+            if not project:
+                raise ValueError(f"项目不存在: {project_id}")
+
+            if project.status != "failed":
+                return {
+                    "success": False,
+                    "message": f"项目不是失败状态: {project.status}"
+                }
+
+            # 重置项目状态
+            project.status = "uploaded"
+            project.error_message = None
+            project.processing_progress = 0
+            await db.commit()
+
+            logger.info(f"项目 {project_id} 状态已重置，开始重新处理")
+
+        # 获取文件内容并重新处理
+        try:
+            content = await self.get_file_content(project_id)
+            # 使用当前服务实例处理文件
+            async with self:
+                result = await self.process_uploaded_file(
+                    project_id=project_id,
+                    file_content=content
+                )
+
+            return {
+                "success": True,
+                "message": "重试成功",
+                "processing_result": result
+            }
+        except Exception as e:
+            # 如果重试失败，标记为失败状态
+            await self.mark_failed_safely(project_id, owner_id, f"重试失败: {e}")
+            logger.error(f"重试项目 {project_id} 失败: {e}")
+            raise
 
 
 # 全局实例
@@ -389,3 +568,19 @@ __all__ = [
     'ProjectProcessingService',
     'project_processing_service',
 ]
+
+if __name__ == "__main__":
+    import asyncio
+
+
+    async def main():
+        service = ProjectProcessingService()
+        # 在这里可以调用服务方法进行测试
+        project_id = "c8f5fccd-84ce-45ea-b3d4-b42e48bbdfe7"
+        owner_id = "6c11cb2b-d499-4f81-8196-3ea078e9f66a"
+        print("Processing file task...")
+        res = await service.process_file_task(project_id, owner_id)
+        print(res)
+
+
+    asyncio.run(main())
