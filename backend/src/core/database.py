@@ -2,6 +2,7 @@
 数据库连接和会话管理模块
 """
 
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy import Engine, event
@@ -96,12 +97,26 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-def get_sync_db_session():
-    """获取同步数据库会话（用于Alembic）"""
-    if SessionLocal is None:
-        create_sync_engine()
+@asynccontextmanager
+async def get_async_db():
+    """
+    获取异步数据库会话（异步上下文管理器）
 
-    return SessionLocal()
+    这个函数专门用于 Celery 任务和其他需要直接使用 async with 的场景
+    FastAPI 的依赖注入继续使用原来的 get_db() 函数
+    """
+    if AsyncSessionLocal is None:
+        await create_database_engine()
+
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception as e:
+            logger.error(f"数据库会话异常: {e}")
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 # 数据库事件监听器
@@ -240,8 +255,7 @@ __all__ = [
     "AsyncSessionLocal",
     "SessionLocal",
     "get_db",
-    "get_db",
-    "get_sync_db_session",
+    "get_async_db",
     "create_database_engine",
     "test_database_connection",
     "close_database_connections",

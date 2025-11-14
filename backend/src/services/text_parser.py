@@ -9,6 +9,42 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+
+def clean_text_for_database(text: str) -> str:
+    """
+    清理文本内容，确保可以安全存储到UTF-8数据库中
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        清理后的文本
+    """
+    if not text:
+        return text
+
+    # 1. 确保文本是有效的UTF-8
+    try:
+        # 如果已经是字符串，重新编码以验证
+        text.encode('utf-8').decode('utf-8')
+    except UnicodeError:
+        # 如果有编码问题，使用错误处理
+        text = text.encode('utf-8', errors='replace').decode('utf-8')
+
+    # 2. 移除控制字符（保留常用的换行、制表符等）
+    # 保留：\n (10), \r (13), \t (9)
+    # 移除：\x00-\x08, \x0B, \x0C, \x0E-\x1F, \x7F
+    text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+
+    # 3. 替换可能有问题的Unicode字符
+    # 移除或替换一些可能导致数据库问题的特殊字符
+    text = re.sub(r'[\uFFFE\uFFFF]', '', text)  # 无效的Unicode字符
+
+    # 4. 标准化换行符
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    return text.strip()
+
 try:
     from src.core.logging import get_logger
     from src.models.chapter import Chapter, ChapterStatus
@@ -233,13 +269,18 @@ class TextParserService:
         try:
             logger.info(f"开始解析文档，文本长度: {len(text)} 字符")
 
+            # 0. 首先清理整个文本的编码
+            cleaned_text = clean_text_for_database(text)
+            if len(cleaned_text) != len(text):
+                logger.info(f"文本清理完成，长度从 {len(text)} 变为 {len(cleaned_text)}")
+
             # 1. 检测章节
-            chapters = self.detector.detect_chapters(text)
+            chapters = self.detector.detect_chapters(cleaned_text)
 
             # 2. 如果章节太长，尝试进一步分割
-            if len(chapters) == 1 and len(text) > min_chapter_length * 2:
+            if len(chapters) == 1 and len(cleaned_text) > min_chapter_length * 2:
                 logger.info("单个章节过长，尝试智能分割")
-                chapters = self._split_long_chapter(text)
+                chapters = self._split_long_chapter(cleaned_text)
 
             # 3. 导入文本分割工具（直接导入，避免依赖问题）
             from src.utils.text_utils import paragraph_splitter, sentence_splitter
@@ -373,12 +414,16 @@ class TextParserService:
 
         # 构建章节数据
         for chapter_detection in parsed.chapters:
+            # 清理章节标题和内容
+            cleaned_title = clean_text_for_database(chapter_detection.title)
+            cleaned_content = clean_text_for_database(chapter_detection.content)
+
             chapter_data = {
                 'project_id': project_id,
-                'title': chapter_detection.title,
-                'content': chapter_detection.content,
+                'title': cleaned_title,
+                'content': cleaned_content,
                 'chapter_number': chapter_detection.chapter_number,
-                'word_count': len(chapter_detection.content),
+                'word_count': len(cleaned_content),
                 'paragraph_count': 0,  # 稍后更新
                 'sentence_count': 0,  # 稍后更新
                 'status': ChapterStatus.PENDING.value,
@@ -400,28 +445,34 @@ class TextParserService:
             chapter_sentence_count = 0
 
             for para_idx, paragraph_text in enumerate(chapter_paragraphs):
+                # 清理段落文本
+                cleaned_paragraph = clean_text_for_database(paragraph_text)
+
                 paragraph_data = {
                     'chapter_id': None,  # 在保存后设置
-                    'content': paragraph_text,
+                    'content': cleaned_paragraph,
                     'order_index': para_idx + 1,
-                    'word_count': len(paragraph_text),
+                    'word_count': len(cleaned_paragraph),
                     'sentence_count': 0,  # 稍后更新
                     'action': ParagraphAction.KEEP.value,
                 }
                 paragraphs_data.append(paragraph_data)
 
                 # 获取当前段落的句子
-                paragraph_sentences = sentence_splitter.split_into_sentences(paragraph_text)
+                paragraph_sentences = sentence_splitter.split_into_sentences(cleaned_paragraph)
                 chapter_sentence_count += len(paragraph_sentences)
                 paragraph_data['sentence_count'] = len(paragraph_sentences)
 
                 for sent_idx, sentence_text in enumerate(paragraph_sentences):
+                    # 清理句子文本
+                    cleaned_sentence = clean_text_for_database(sentence_text)
+
                     sentence_data = {
                         'paragraph_id': None,  # 在保存后设置
-                        'content': sentence_text,
+                        'content': cleaned_sentence,
                         'order_index': sent_idx + 1,
-                        'word_count': len(sentence_text),
-                        'character_count': len(sentence_text),
+                        'word_count': len(cleaned_sentence),
+                        'character_count': len(cleaned_sentence),
                         'status': SentenceStatus.PENDING.value,
                     }
                     sentences_data.append(sentence_data)

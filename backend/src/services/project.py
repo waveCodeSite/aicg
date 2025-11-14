@@ -3,6 +3,7 @@
 """
 
 from typing import Any, Dict, List, Optional, Tuple
+
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -346,6 +347,104 @@ class ProjectService:
         except Exception as e:
             logger.error(f"获取项目统计失败: {e}")
             return {}
+
+    async def update_processing_progress(self, project_id: str, owner_id: str, progress: int) -> Optional[Project]:
+        """
+        更新项目处理进度
+
+        Args:
+            project_id: 项目ID
+            owner_id: 所有者ID
+            progress: 进度百分比 (0-100)
+
+        Returns:
+            更新后的项目
+        """
+        try:
+            project = await self.get_project_by_id(project_id, owner_id)
+            if not project:
+                raise ProjectServiceError(f"项目不存在或无权限: {project_id}")
+
+            # 更新进度
+            project.update_processing_progress(progress)
+
+            await self.db_session.commit()
+            await self.db_session.refresh(project)
+
+            logger.info(f"更新项目进度: {project_id} -> {progress}%")
+            return project
+
+        except ProjectServiceError:
+            raise
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"更新项目进度失败: {e}")
+            raise ProjectServiceError(f"更新项目进度失败: {str(e)}")
+
+    async def mark_processing_failed(self, project_id: str, owner_id: str, error_message: str) -> Optional[Project]:
+        """
+        标记项目处理失败
+
+        Args:
+            project_id: 项目ID
+            owner_id: 所有者ID
+            error_message: 错误信息
+
+        Returns:
+            更新后的项目
+        """
+        try:
+            project = await self.get_project_by_id(project_id, owner_id)
+            if not project:
+                raise ProjectServiceError(f"项目不存在或无权限: {project_id}")
+
+            # 标记失败
+            project.mark_as_failed(error_message)
+
+            await self.db_session.commit()
+            await self.db_session.refresh(project)
+
+            logger.info(f"标记项目处理失败: {project_id}")
+            return project
+
+        except ProjectServiceError:
+            raise
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"标记项目处理失败: {e}")
+            raise ProjectServiceError(f"标记项目处理失败: {str(e)}")
+
+    async def mark_processing_completed(self, project_id: str, owner_id: str) -> Optional[Project]:
+        """
+        标记项目处理完成
+
+        Args:
+            project_id: 项目ID
+            owner_id: 所有者ID
+
+        Returns:
+            更新后的项目
+        """
+        try:
+            project = await self.get_project_by_id(project_id, owner_id)
+            if not project:
+                raise ProjectServiceError(f"项目不存在或无权限: {project_id}")
+
+            # 标记完成
+            project.mark_as_completed()
+
+            await self.db_session.commit()
+            await self.db_session.refresh(project)
+
+            logger.info(f"标记项目处理完成: {project_id}")
+            return project
+
+        except ProjectServiceError:
+            raise
+        except Exception as e:
+            await self.db_session.rollback()
+            logger.error(f"标记项目处理完成失败: {e}")
+            raise ProjectServiceError(f"标记项目处理完成失败: {str(e)}")
 
 
 __all__ = [

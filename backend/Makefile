@@ -55,14 +55,6 @@ migrate: ## 运行数据库迁移
 	$(UV) run alembic upgrade head
 	@echo "$(GREEN)✅ 数据库迁移完成$(RESET)"
 
-migrate-create: ## 创建新的数据库迁移 (使用: make migrate-create MSG="描述")
-	@if [ -z "$(MSG)" ]; then \
-		echo "$(RED)❌ 请提供迁移描述: make migrate-create MSG=\"添加用户表\"$(RESET)"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)📝 创建数据库迁移: $(MSG)$(RESET)"
-	$(UV) run alembic revision --autogenerate -m "$(MSG)"
-	@echo "$(GREEN)✅ 迁移文件创建完成$(RESET)"
 
 migrate-down: ## 回滚最后一次数据库迁移
 	@echo "$(YELLOW)⚠️  回滚数据库迁移...$(RESET)"
@@ -77,54 +69,10 @@ beat: ## 启动Celery Beat (定时任务调度器)
 	@echo "$(BLUE)⏰ 启动Celery Beat...$(RESET)"
 	$(UV) run celery -A src.workers.base beat --loglevel=info
 
-dev: ## 启动完整开发环境 (API + Worker + Beat)
-	@echo "$(BLUE)🚀 启动完整开发环境...$(RESET)"
-	@echo "$(YELLOW)需要在多个终端窗口中运行以下命令:$(RESET)"
-	@echo ""
-	@echo "$(GREEN)终端1 - API服务:$(RESET)"
-	@echo "  make start"
-	@echo ""
-	@echo "$(GREEN)终端2 - Celery Worker:$(RESET)"
-	@echo "  make worker"
-	@echo ""
-	@echo "$(GREEN)终端3 - Celery Beat:$(RESET)"
-	@echo "  make beat"
-
 test: ## 运行所有测试
 	@echo "$(BLUE)🧪 运行测试...$(RESET)"
 	$(UV) run pytest
 	@echo "$(GREEN)✅ 测试完成$(RESET)"
-
-test-unit: ## 运行单元测试
-	@echo "$(BLUE)🧪 运行单元测试...$(RESET)"
-	$(UV) run pytest -m unit
-
-test-integration: ## 运行集成测试
-	@echo "$(BLUE)🧪 运行集成测试...$(RESET)"
-	$(UV) run pytest -m integration
-
-test-fast: ## 运行快速测试 (排除慢速测试)
-	@echo "$(BLUE)🏃 运行快速测试...$(RESET)"
-	$(UV) run pytest -m "not slow"
-
-lint: ## 运行代码检查和格式化
-	@echo "$(BLUE)🔍 代码检查和格式化...$(RESET)"
-	$(MAKE) format
-	$(MAKE) check
-
-format: ## 格式化代码 (black + isort)
-	@echo "$(BLUE)📝 格式化代码...$(RESET)"
-	$(UV) run black src/ tests/
-	$(UV) run isort src/ tests/
-	@echo "$(GREEN)✅ 代码格式化完成$(RESET)"
-
-check: ## 代码质量检查 (flake8 + mypy)
-	@echo "$(BLUE)🔍 代码质量检查...$(RESET)"
-	@echo "$(YELLOW)Flake8检查:$(RESET)"
-	$(UV) run flake8 src/ tests/ || true
-	@echo "$(YELLOW)MyPy检查:$(RESET)"
-	$(UV) run mypy src/ || true
-	@echo "$(GREEN)✅ 代码检查完成$(RESET)"
 
 clean: ## 清理临时文件和缓存
 	@echo "$(BLUE)🧹 清理项目...$(RESET)"
@@ -142,72 +90,10 @@ install: ## 安装开发依赖
 	$(UV) sync --dev
 	@echo "$(GREEN)✅ 依赖安装完成$(RESET)"
 
-add: ## 添加新依赖 (使用: make add PACKAGE=fastapi)
-	@if [ -z "$(PACKAGE)" ]; then \
-		echo "$(RED)❌ 请提供包名: make add PACKAGE=fastapi$(RESET)"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)📦 添加依赖: $(PACKAGE)$(RESET)"
-	$(UV) add $(PACKAGE)
-
-add-dev: ## 添加开发依赖 (使用: make add-dev PACKAGE=pytest)
-	@if [ -z "$(PACKAGE)" ]; then \
-		echo "$(RED)❌ 请提供包名: make add-dev PACKAGE=pytest$(RESET)"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)📦 添加开发依赖: $(PACKAGE)$(RESET)"
-	$(UV) add --dev $(PACKAGE)
-
 shell: ## 启动Python Shell (带项目环境)
 	@echo "$(BLUE)🐍 启动Python Shell...$(RESET)"
 	$(UV) run python
 
-db-reset: ## 重置数据库 (删除所有表并重新迁移)
-	@echo "$(RED)⚠️  警告: 这将删除所有数据!$(RESET)"
-	@read -p "确认继续? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	@echo "$(BLUE)🔄 重置数据库...$(RESET)"
-	$(UV) run alembic downgrade base
-	$(MAKE) migrate
-	@echo "$(GREEN)✅ 数据库重置完成$(RESET)"
-
 db-status: ## 查看数据库迁移状态
 	@echo "$(BLUE)📊 数据库迁移状态:$(RESET)"
 	$(UV) run alembic current
-
-logs: ## 查看应用日志 (如果启用了日志文件)
-	@if [ -f "logs/app.log" ]; then \
-		echo "$(BLUE)📄 应用日志:$(RESET)"; \
-		tail -f logs/app.log; \
-	else \
-		echo "$(YELLOW)⚠️  日志文件不存在，确保LOG_FILE配置正确$(RESET)"; \
-	fi
-
-health: ## 检查服务健康状态
-	@echo "$(BLUE)🏥 检查服务健康状态...$(RESET)"
-	@echo "$(GREEN)API服务:$(RESET)"
-	@curl -s http://$(HOST):$(PORT)/health | python3 -m json.tool 2>/dev/null || echo "$(RED)服务未运行$(RESET)"
-	@echo ""
-	@echo "$(GREEN)数据库连接:$(RESET)"
-	@curl -s http://$(HOST):$(PORT)/health/database | python3 -m json.tool 2>/dev/null || echo "$(RED)数据库检查失败$(RESET)"
-
-docs: ## 启动文档服务 (如果配置了)
-	@echo "$(BLUE)📚 API文档地址:$(RESET)"
-	@echo "$(GREEN)Swagger UI: http://$(HOST):$(PORT)/docs$(RESET)"
-	@echo "$(GREEN)ReDoc: http://$(HOST):$(PORT)/redoc$(RESET)"
-
-# 开发者工具
-info: ## 显示项目信息
-	@echo "$(BLUE)📋 项目信息:$(RESET)"
-	@echo "  项目名称: $(PROJECT_NAME)"
-	@echo "  Python版本: $(shell $(PYTHON) --version)"
-	@echo "  uv版本: $(shell $(UV) --version)"
-	@echo "  端口: $(PORT)"
-	@echo "  环境: $(shell $(UV) run python -c "from src.core.config import settings; print(settings.ENVIRONMENT)")"
-	@echo ""
-
-# 快速别名
-s: start ## start的别名
-m: migrate ## migrate的别名
-t: test ## test的别名
-l: lint ## lint的别名
-c: clean ## clean的别名
