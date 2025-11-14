@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user_required
 from src.core.database import get_db
-from src.core.exceptions import FileUploadError, ValidationError
 from src.core.security import get_password_hash, verify_password
 from src.models.user import User
 from src.services.avatar import avatar_service
@@ -29,6 +28,20 @@ class UserUpdateRequest(BaseModel):
     preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好设置")
     timezone: Optional[str] = Field("Asia/Shanghai", description="时区")
     language: Optional[str] = Field("zh-CN", description="语言")
+
+    @field_validator('preferences', mode='before')
+    @classmethod
+    def validate_preferences(cls, v):
+        if v is not None:
+            if isinstance(v, str):
+                try:
+                    import json
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    raise ValueError('preferences必须是有效的JSON字符串')
+            elif not isinstance(v, dict):
+                raise ValueError('preferences必须是字典或JSON字符串')
+        return v
 
     @field_validator('timezone')
     @classmethod
@@ -332,6 +345,7 @@ async def upload_user_avatar(
     await db.commit()
     await db.refresh(current_user)
 
+    current_user.preferences = current_user.get_preferences()
     return {
         "message": "头像上传成功",
         "avatar_url": avatar_url,
@@ -365,6 +379,7 @@ async def delete_user_avatar(
     await db.commit()
     await db.refresh(current_user)
 
+    current_user.preferences = current_user.get_preferences()
     return {
         "message": "头像删除成功",
         "user": UserResponse.model_validate(current_user)

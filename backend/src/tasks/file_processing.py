@@ -11,7 +11,7 @@ from typing import Any, Dict
 from celery import Celery
 
 from src.core.config import settings
-from src.core.database import get_async_db, AsyncSessionLocal, create_database_engine
+from src.core.database import get_async_db
 from src.core.logging import get_logger
 from src.models.project import Project
 from src.services.project_processing import project_processing_service
