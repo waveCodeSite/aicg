@@ -137,13 +137,12 @@
           type="primary"
           :icon="Document"
           @click="handleManageChapters"
-          style="color: white !important; background-color: #409eff !important; border-color: #409eff !important; border-radius: 8px; font-weight: 600; cursor: pointer;"
         >
           章节管理
         </el-button>
         <el-button
           v-if="['completed', 'parsed'].includes(project.status)"
-          type="success"
+          type="primary"
           :icon="VideoPlay"
           @click="handleStartGeneration"
         >
@@ -154,25 +153,25 @@
         <!-- 危险操作 -->
         <el-button
           v-if="projectsStore.isArchivable(project)"
-          type="warning"
+          type="primary"
           :icon="Lock"
-          @click="handleArchive"
+          @click="handleArchiveWithRefresh"
         >
           归档项目
         </el-button>
         <el-button
           v-if="project.status === 'failed'"
-          type="warning"
+          type="primary"
           :icon="RefreshRight"
-          @click="handleReprocess"
+          @click="handleReprocessWithRefresh"
         >
           重试
         </el-button>
         <el-button
           v-if="project.status === 'completed'"
-          type="info"
+          type="primary"
           :icon="Refresh"
-          @click="handleReprocess"
+          @click="handleReprocessWithRefresh"
         >
           重新处理
         </el-button>
@@ -201,23 +200,30 @@
         </template>
       </el-result>
     </div>
+
+    <!-- 编辑项目对话框 -->
+    <el-dialog
+      v-model="showEditorDialog"
+      title="编辑项目"
+      width="600px"
+      :close-on-click-modal="false"
+      @close="handleEditorClose"
+    >
+      <ProjectEditor
+        :project="editingProject"
+        :loading="editorLoading"
+        @submit="handleEditorSubmit"
+        @cancel="handleEditorCancel"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
   import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-  import { useRouter } from 'vue-router'
-  import { ElMessage } from 'element-plus'
-  import {
-    ArrowLeft,
-    VideoPlay,
-    Edit,
-    Lock,
-    Refresh,
-    RefreshRight,
-    Document
-  } from '@element-plus/icons-vue'
   import { useProjectsStore } from '@/stores/projects'
+  import { useProject } from '@/composables/useProject'
+  import ProjectEditor from '@/components/project/ProjectEditor.vue'
 
   // Props定义
   const props = defineProps({
@@ -239,10 +245,6 @@
     }
   })
 
-  // Router和Store实例
-  const router = useRouter()
-  const projectsStore = useProjectsStore()
-
   // Emits定义
   const emit = defineEmits([
     'back',
@@ -253,11 +255,18 @@
     'reprocess'
   ])
 
+  // Store实例
+  const projectsStore = useProjectsStore()
+
   // 响应式数据
-  const refreshing = ref(false)
   const internalProject = ref(null)
   const internalLoading = ref(false)
   const internalError = ref(null)
+
+  // 编辑器状态
+  const showEditorDialog = ref(false)
+  const editingProject = ref(null)
+  const editorLoading = ref(false)
 
   // 状态轮询
   const pollingInterval = ref(null)
@@ -266,6 +275,20 @@
   const project = computed(() => props.project || internalProject.value)
   const loading = computed(() => props.loading || internalLoading.value)
   const error = computed(() => props.error || internalError.value)
+
+  // 使用可复用的项目逻辑
+  const projectIdRef = computed(() => props.projectId)
+  const emitRef = props.project ? emit : null
+  const {
+    refreshing,
+    handleBack,
+    handleRefresh: handleProjectRefresh,
+    handleEdit: handleProjectEdit,
+    handleArchive,
+    handleReprocess,
+    handleStartGeneration,
+    handleManageChapters
+  } = useProject(projectIdRef, emitRef)
 
   // 获取项目数据的函数
   const fetchProjectData = async () => {
@@ -284,75 +307,69 @@
     } catch (err) {
       console.error('获取项目数据失败:', err)
       internalError.value = '加载项目数据失败'
-      ElMessage.error('加载项目数据失败')
     } finally {
       internalLoading.value = false
     }
   }
 
-  // 方法
-  const handleBack = () => {
-    if (props.project) {
-      // 如果有父组件，使用emit
-      emit('back')
-    } else {
-      // 如果是独立路由，导航回项目列表
-      router.push('/projects')
-    }
+  // 处理编辑项目操作
+  const handleEdit = () => {
+    handleProjectEdit(project.value, showEditorDialog, editingProject)
   }
 
-  const handleManageChapters = () => {
-    if (!props.projectId) {
-      console.error('projectId 为空')
-      ElMessage.error('项目ID丢失，请重新进入页面')
-      return
-    }
-    const targetRoute = `/projects/${props.projectId}/chapters`
-    router.push(targetRoute).then(() => {
-      console.log('路由跳转成功')
-    })
-  }
-
-  const handleStartGeneration = () => {
-    if (!['completed', 'parsed'].includes(props.project.status)) {
-      ElMessage.warning('文件处理完成后才能开始视频生成')
-      return
-    }
-    emit('start-generation', props.project)
-  }
-
+  // 处理刷新操作，根据情况调用不同的逻辑
   const handleRefresh = async () => {
-    refreshing.value = true
+    await handleProjectRefresh(fetchProjectData)
+  }
+
+  // 处理归档操作
+  const handleArchiveWithRefresh = async () => {
+    await handleArchive(project.value, fetchProjectData)
+  }
+
+  // 处理重新处理操作
+  const handleReprocessWithRefresh = async () => {
+    await handleReprocess(project.value, fetchProjectData, startStatusPolling)
+  }
+
+  // 编辑器相关处理
+  const handleEditorSubmit = async (updatedProject) => {
     try {
+      editorLoading.value = true
+
+      // 关闭对话框
+      showEditorDialog.value = false
+      editingProject.value = null
+
+      // 如果有父组件，通过emit通知父组件
       if (props.project) {
-        // 如果有父组件，使用emit
         emit('refresh', props.projectId)
       } else {
-        // 如果是独立路由，重新获取数据
-        await fetchProjectData()
+        // 如果是独立路由模式，直接使用API返回的更新数据
+        if (updatedProject) {
+          console.log('更新项目数据:', updatedProject)
+          internalProject.value = updatedProject
+        } else {
+          // 如果没有返回数据，重新获取
+          console.log('重新获取项目数据')
+          await fetchProjectData()
+        }
       }
+
+    } catch (error) {
+      console.error('编辑项目失败:', error)
     } finally {
-      setTimeout(() => {
-        refreshing.value = false
-      }, 1000)
+      editorLoading.value = false
     }
   }
 
-  const handleEdit = () => {
-    emit('edit', props.project)
+  const handleEditorCancel = () => {
+    showEditorDialog.value = false
+    editingProject.value = null
   }
 
-  const handleArchive = async () => {
-    emit('archive', props.project)
-  }
-
-  const handleReprocess = () => {
-    emit('reprocess', props.project)
-
-    // 重试后重新开始状态轮询
-    setTimeout(() => {
-      startStatusPolling()
-    }, 1000) // 延迟1秒后开始轮询，确保状态已更新
+  const handleEditorClose = () => {
+    editingProject.value = null
   }
 
   // 状态轮询相关方法
@@ -361,7 +378,7 @@
     stopStatusPolling()
 
     // 只有在处理中的状态才进行轮询
-    if (!props.project || !['uploaded', 'parsing', 'generating'].includes(props.project.status)) {
+    if (!project.value || !['uploaded', 'parsing', 'generating'].includes(project.value.status)) {
       return
     }
 
@@ -389,8 +406,16 @@
       const finalStatuses = ['parsed', 'completed', 'failed', 'archived']
       if (finalStatuses.includes(statusResponse.project.status)) {
         stopStatusPolling()
-        // 发出刷新事件，让父组件更新项目数据
-        emit('refresh', props.projectId)
+
+        // 更新内部项目数据
+        if (internalProject.value) {
+          internalProject.value = { ...internalProject.value, ...statusResponse.project }
+        }
+
+        // 如果有父组件，发出刷新事件
+        if (props.project) {
+          emit('refresh', props.projectId)
+        }
       }
 
     } catch (error) {
