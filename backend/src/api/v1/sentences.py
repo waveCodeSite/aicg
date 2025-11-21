@@ -1,17 +1,22 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db
+from src.api.dependencies import get_current_user_required, get_db
 from src.api.schemas.sentence import SentenceCreate, SentenceResponse, SentenceUpdate, SentenceListResponse
+from src.models.user import User
 from src.services.sentence import SentenceService
 
 router = APIRouter()
 
 
-@router.get("/", response_model=SentenceListResponse)
+@router.get("/paragraphs/{paragraph_id}/sentences", response_model=SentenceListResponse)
 async def list_sentences(
-    paragraph_id: str,
-    db: AsyncSession = Depends(get_db)
+    *,
+    current_user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+    paragraph_id: str
 ):
     """
     获取段落的句子列表
@@ -22,69 +27,88 @@ async def list_sentences(
     Returns:
         句子列表，按order_index排序
     """
-    service = SentenceService(db)
-    sentences = await service.get_sentences_by_paragraph(paragraph_id)
+    sentence_service = SentenceService(db)
+    sentences = await sentence_service.get_sentences_by_paragraph(paragraph_id)
     
-    # Convert ORM objects to dicts for Pydantic v2 compatibility
-    data = [s.to_dict() for s in sentences]
+    # 使用 from_dict 转换
+    sentence_responses = [SentenceResponse.from_dict(s.to_dict()) for s in sentences]
     
     return SentenceListResponse(
-        data=data,
-        total=len(sentences)
+        sentences=sentence_responses,
+        total=len(sentences),
+        page=1,
+        size=len(sentences) if sentences else 20,
+        total_pages=1
     )
 
 
-@router.post("/", response_model=SentenceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/paragraphs/{paragraph_id}/sentences", response_model=SentenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_sentence(
-    sentence_in: SentenceCreate,
-    db: AsyncSession = Depends(get_db)
+    *,
+    current_user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+    paragraph_id: str,
+    sentence_in: SentenceCreate
 ):
     """
     创建新句子
     """
-    service = SentenceService(db)
-    return await service.create_sentence(
-        paragraph_id=sentence_in.paragraph_id,
+    sentence_service = SentenceService(db)
+    
+    sentence = await sentence_service.create_sentence(
+        paragraph_id=paragraph_id,
         content=sentence_in.content,
         order_index=sentence_in.order_index
     )
+    
+    return SentenceResponse.from_dict(sentence.to_dict())
 
 
 @router.get("/{sentence_id}", response_model=SentenceResponse)
 async def get_sentence(
-    sentence_id: str,
-    db: AsyncSession = Depends(get_db)
+    *,
+    current_user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+    sentence_id: str
 ):
     """
     获取句子详情
     """
-    service = SentenceService(db)
-    return await service.get_sentence_by_id(sentence_id)
+    sentence_service = SentenceService(db)
+    sentence = await sentence_service.get_sentence_by_id(sentence_id)
+    return SentenceResponse.from_dict(sentence.to_dict())
 
 
 @router.put("/{sentence_id}", response_model=SentenceResponse)
 async def update_sentence(
+    *,
+    current_user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
     sentence_id: str,
-    sentence_in: SentenceUpdate,
-    db: AsyncSession = Depends(get_db)
+    sentence_in: SentenceUpdate
 ):
     """
     更新句子内容
     """
-    service = SentenceService(db)
-    return await service.update_sentence(
+    sentence_service = SentenceService(db)
+    
+    sentence = await sentence_service.update_sentence(
         sentence_id=sentence_id,
         content=sentence_in.content
     )
+    
+    return SentenceResponse.from_dict(sentence.to_dict())
 
 
 @router.delete("/{sentence_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sentence(
-    sentence_id: str,
-    db: AsyncSession = Depends(get_db)
+    *,
+    current_user: User = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+    sentence_id: str
 ):
     """
     删除句子
     """
-    service = SentenceService(db)
-    await service.delete_sentence(sentence_id)
+    sentence_service = SentenceService(db)
+    await sentence_service.delete_sentence(sentence_id)

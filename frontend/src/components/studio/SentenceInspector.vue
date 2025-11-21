@@ -161,7 +161,7 @@ const loadSentences = async (paragraphId) => {
     // 但为了完成任务，我们尝试调用，如果失败则显示空
     try {
         const res = await sentencesService.getSentences(paragraphId)
-        sentences.value = res.data || []
+        sentences.value = res.sentences || []
     } catch (e) {
         console.warn('获取句子列表失败，可能是接口未实现', e)
         sentences.value = []
@@ -188,8 +188,7 @@ const submitAddSentence = async () => {
 
   try {
     submitting.value = true
-    await sentencesService.createSentence({
-      paragraph_id: props.paragraph.id,
+    await sentencesService.createSentence(props.paragraph.id, {
       content: addForm.value.content,
       order_index: sentences.value.length + 1
     })

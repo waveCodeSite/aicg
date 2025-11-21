@@ -125,56 +125,6 @@ class Sentence(BaseModel):
         # 返回插入的ID列表
         return sentence_ids
 
-    @classmethod
-    async def batch_update_status(cls, db_session, updates: List[Dict]) -> None:
-        """
-        批量更新句子状态
-
-        Args:
-            db_session: 数据库会话
-            updates: 更新数据列表，格式:
-                [
-                    {
-                        'id': str,
-                        'status': str,
-                        'error_message': str,
-                        'retry_count': int
-                    },
-                    ...
-                ]
-        """
-        if not updates:
-            return
-
-        for update in updates:
-            sentence_id = update.pop('id')
-            # 添加更新时间
-            update['updated_at'] = datetime.utcnow()
-
-            await db_session.execute(
-                cls.__table__.update()
-                .where(cls.__table__.c.id == sentence_id)
-                .values(**update)
-            )
-
-    @classmethod
-    async def batch_mark_completed(cls, db_session, sentence_ids: List[str]) -> None:
-        """
-        批量标记句子为完成状态
-
-        Args:
-            db_session: 数据库会话
-            sentence_ids: 句子ID列表
-        """
-        await db_session.execute(
-            cls.__table__.update()
-            .where(cls.__table__.c.id.in_(sentence_ids))
-            .values(
-                status=SentenceStatus.COMPLETED.value,
-                updated_at=datetime.utcnow(),
-                completed_at=datetime.utcnow()
-            )
-        )
 
     @classmethod
     async def get_by_paragraph_id(cls, db_session, paragraph_id: str) -> List['Sentence']:
