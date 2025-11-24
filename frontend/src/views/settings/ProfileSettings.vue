@@ -105,7 +105,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { User, Message, Clock, Camera } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { formatDate, getUserTimezone } from '@/utils/dateUtils'
 
 const authStore = useAuthStore()
@@ -258,12 +258,46 @@ const uploadAvatar = async (file) => {
   }
 }
 
+
 // 移除头像
 const removeAvatar = async () => {
-  // Implementation for removing avatar if API supports it
-  // For now just clear preview
-  previewAvatar.value = ''
-  ElMessage.info('头像已移除 (预览)')
+  try {
+    await ElMessageBox.confirm(
+      '确定要移除当前头像吗？移除后将恢复默认头像。',
+      '移除头像',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    profileLoading.value = true
+    try {
+      const response = await authStore.removeAvatar()
+      
+      if (response.user) {
+        Object.assign(userForm, {
+          avatar_url: response.user.avatar_url
+        })
+      } else {
+        userForm.avatar_url = ''
+      }
+      
+      previewAvatar.value = ''
+      ElMessage.success('头像已移除')
+    } catch (error) {
+      console.error('移除头像失败:', error)
+      ElMessage.error('移除头像失败，请重试')
+    } finally {
+      profileLoading.value = false
+    }
+  } catch (error) {
+    // 用户取消操作
+    if (error !== 'cancel') {
+      console.error('操作异常:', error)
+    }
+  }
 }
 
 onMounted(() => {
