@@ -97,6 +97,7 @@ def run_async_task(coro):
     Returns:
         协程的执行结果
     """
+
     async def _wrapper():
         from src.core.database import close_database_connections
         # 在新的事件循环中，必须重置数据库连接，因为旧的连接绑定在已关闭的循环上
@@ -136,13 +137,27 @@ def retry_failed_project(self, project_id: str, owner_id: str) -> Dict[str, Any]
         if result.get("success", False):
             logger.info(f"Celery任务成功: retry_failed_project (project_id={project_id})")
         else:
-            logger.error(f"Celery任务失败: retry_failed_project (project_id={project_id}, error={result.get('message')})")
+            logger.error(
+                f"Celery任务失败: retry_failed_project (project_id={project_id}, error={result.get('message')})")
 
         return result
 
     except Exception as e:
         logger.error(f"Celery任务异常: retry_failed_project (project_id={project_id}, error={e})", exc_info=True)
         raise
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    name="generate.generate_prompts"
+)
+def generate_prompts(self, chapter_id: str, api_key_id: str) -> Dict[str, Any]:
+    # TODO
+    pass
 
 
 # ---------------------------
@@ -153,4 +168,5 @@ __all__ = [
     'celery_app',
     'process_uploaded_file',
     'retry_failed_project',
+    'generate_prompts'
 ]

@@ -96,7 +96,7 @@ def validate_celery_tasks():
     """验证Celery任务"""
     print("🔍 验证Celery任务...")
 
-    tasks_file = Path('src/tasks/file_processing.py')
+    tasks_file = Path('src/tasks/task.py')
     if not tasks_file.exists():
         print("  ❌ Celery任务文件不存在")
         return False
@@ -160,7 +160,7 @@ def validate_error_handling():
     print("🔍 验证错误处理机制...")
 
     # 检查Celery任务的错误处理
-    tasks_file = Path('src/tasks/file_processing.py')
+    tasks_file = Path('src/tasks/task.py')
     if tasks_file.exists():
         with open(tasks_file, 'r', encoding='utf-8') as f:
             tasks_content = f.read()
@@ -201,7 +201,7 @@ def validate_async_patterns():
         'src/models/paragraph.py',
         'src/models/sentence.py',
         'src/services/project_processing.py',
-        'src/tasks/file_processing.py'
+        'src/tasks/task.py'
     ]
 
     async_usage_count = 0
@@ -229,7 +229,7 @@ def validate_database_transactions():
     print("🔍 验证数据库事务处理...")
 
     # 检查事务使用
-    tasks_file = Path('src/tasks/file_processing.py')
+    tasks_file = Path('src/tasks/task.py')
     if tasks_file.exists():
         with open(tasks_file, 'r', encoding='utf-8') as f:
             content = f.read()
@@ -305,7 +305,7 @@ def validate_integration_points():
             return False
 
     # 检Celery任务与业务服务集成
-    tasks_file = Path('src/tasks/file_processing.py')
+    tasks_file = Path('src/tasks/task.py')
     if tasks_file.exists():
         with open(tasks_file, 'r', encoding='utf-8') as f:
             content = f.read()

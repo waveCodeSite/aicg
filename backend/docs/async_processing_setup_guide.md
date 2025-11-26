@@ -201,7 +201,7 @@ celery -A src.tasks.file_processing worker --loglevel=debug
 ### 测试单个任务
 
 ```python
-from src.tasks.file_processing import process_uploaded_file
+from src.tasks.task import process_uploaded_file
 
 # 直接调用任务（用于测试）
 result = process_uploaded_file.apply(
@@ -215,7 +215,7 @@ print(f"处理结果: {result}")
 ### 健康检查
 
 ```python
-from src.tasks.file_processing import health_check
+from src.tasks.task import health_check
 
 # 检查系统健康状态
 health = health_check.apply().get()

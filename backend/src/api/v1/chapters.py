@@ -264,28 +264,11 @@ async def get_chapter_sentences(
         chapter_id: str
 ):
     """获取章节的所有句子（一次性加载，用于导演引擎）"""
-    from sqlalchemy import select
-    from src.models.paragraph import Paragraph
-    from src.models.sentence import Sentence
     from src.api.schemas.sentence import SentenceResponse
 
     chapter_service = ChapterService(db)
 
-    # 获取章节并验证权限
-    chapter = await chapter_service.get_chapter_by_id(chapter_id)
-    project_service = ProjectService(db)
-    await project_service.get_project_by_id(chapter.project_id, current_user.id)
-
-    # 使用 JOIN 一次性查询所有句子，避免 N+1 问题
-    stmt = (
-        select(Sentence)
-        .join(Paragraph, Sentence.paragraph_id == Paragraph.id)
-        .where(Paragraph.chapter_id == chapter_id)
-        .order_by(Paragraph.order_index).order_by(Sentence.order_index)
-    )
-
-    result = await db.execute(stmt)
-    sentences = result.scalars().all()
+    sentences = await chapter_service.get_sentences(chapter_id=chapter_id)
 
     # 转换为响应模型
     sentence_responses = [SentenceResponse.from_dict(s.to_dict()) for s in sentences]

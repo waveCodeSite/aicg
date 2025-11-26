@@ -5,21 +5,19 @@ AI导演引擎 API
 - 批量生成图像提示词
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user_required
 from src.api.schemas.prompt import PromptGenerateRequest, PromptGenerateResponse
 from src.core.database import get_db
-from src.core.exceptions import BusinessLogicError, NotFoundError
+from src.core.exceptions import NotFoundError
 from src.core.logging import get_logger
 from src.models.chapter import Chapter
-from src.models.paragraph import Paragraph
-from src.models.sentence import Sentence
 from src.models.user import User
 from src.services.project import ProjectService
-from src.services.prompt import PromptService
+from src.tasks.task import generate_prompts as generate_prompts_task
 
 logger = get_logger(__name__)
 
@@ -54,52 +52,16 @@ async def generate_prompts(
     project_service = ProjectService(db)
     await project_service.get_project_by_id(chapter.project_id, current_user.id)
 
-    # 2. 获取章节下的所有句子（通过段落）
-    stmt = (
-        select(Sentence)
-        .join(Paragraph)
-        .join(Chapter)
-        .where(Chapter.id == request.chapter_id)
-        .order_by(Paragraph.order_index, Sentence.order_index)
-    )
-    result = await db.execute(stmt)
-    sentences = result.scalars().all()
+    # 2. 投递任务到celery
+    result = generate_prompts_task.delay(chapter.id.hex, request.api_key_id.hex)
 
-    if not sentences:
-        raise BusinessLogicError("章节没有句子数据")
-
-    # 3. 提取文本
-    sentence_texts = [s.content for s in sentences]
-
-    # 4. 调用AI服务生成提示词
-    prompt_service = PromptService(db)
-    prompts = await prompt_service.generate_prompts_batch(
-        sentences=sentence_texts,
-        api_key=request.api_key,
-        provider=request.provider,
-        model=request.model,
-        style=request.style
-    )
-
-    # 5. 更新数据库
-    updated_count = 0
-    for sentence, prompt_data in zip(sentences, prompts):
-        sentence.image_prompt = prompt_data["prompt"]
-        sentence.image_style = request.style
-        # 如果没有手动编辑过，则更新edited_prompt
-        if not sentence.is_manual_edited:
-            sentence.edited_prompt = prompt_data["prompt"]
-        updated_count += 1
-
+    # 3.更新章节状态为提示词生成中
+    chapter.status = "generating_prompts"
+    await db.flush()
     await db.commit()
 
-    logger.info(f"成功为章节 {request.chapter_id} 生成 {updated_count} 个提示词")
-
-    return PromptGenerateResponse(
-        success=True,
-        message=f"成功为 {updated_count} 个句子生成提示词",
-        updated_count=updated_count
-    )
+    logger.info(f"成功为章节 {request.chapter_id} 投递提示词生成任务，任务ID: {result.id}")
+    return PromptGenerateResponse(success=True, message="提示词生成任务已提交")
 
 
 __all__ = ["router"]

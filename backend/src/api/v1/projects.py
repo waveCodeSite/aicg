@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import get_current_user_required
-from src.api.schemas.project import (ProjectArchiveResponse, ProjectCreate, ProjectDeleteResponse, ProjectListResponse, ProjectProcessingResponse, ProjectResponse,
+from src.api.schemas.project import (ProjectArchiveResponse, ProjectCreate, ProjectDeleteResponse, ProjectListResponse,
+                                     ProjectProcessingResponse, ProjectResponse,
                                      ProjectRetryResponse, ProjectStatusResponse, ProjectUpdate)
 from src.core.database import get_db
 from src.core.logging import get_logger
@@ -117,7 +118,7 @@ async def create_project(
         )
 
     # 投递Celery解析任务
-    from src.tasks.file_processing import process_uploaded_file
+    from src.tasks.task import process_uploaded_file
     task = process_uploaded_file.delay(str(project.id), current_user.id)
 
     logger.info(f"项目 {project.id} 创建成功，已投递解析任务: {task.id}")
@@ -235,7 +236,7 @@ async def retry_project(
         )
 
     # 投递重试任务
-    from src.tasks.file_processing import retry_failed_project
+    from src.tasks.task import retry_failed_project
     task = retry_failed_project.delay(project_id, current_user.id)
 
     logger.info(f"项目 {project_id} 重试任务已投递: {task.id}")

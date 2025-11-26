@@ -501,6 +501,34 @@ class ChapterService(BaseService):
             f"删除章节成功: ID={chapter_id}, 标题={chapter.title}, 已删除 {paragraph_count} 个段落, {sentence_count} 个句子")
         return True
 
+    async def get_sentences(self, chapter_id: str, status: ModelChapterStatus = None) -> List[dict]:
+        """
+        获取章节的所有句子（一次性加载，用于导演引擎）
+
+        Args:
+            chapter_id: 章节ID
+            status: 章节状态过滤条件
+
+        Returns:
+            List[dict]: 句子列表，每个句子包含 id 和 content 字段
+        """
+        # 使用 JOIN 一次性查询所有句子，避免 N+1 问题
+        stmt = (
+            select(Sentence)
+            .join(Paragraph, Sentence.paragraph_id == Paragraph.id)
+            .where(Paragraph.chapter_id == chapter_id)
+            .order_by(Paragraph.order_index).order_by(Sentence.order_index)
+        )
+
+        # 如果需要，可以根据章节状态过滤句子（示例中未使用）
+        if status:
+            stmt.where(Sentence.status == status.value)
+
+        result = await self.execute(stmt)
+        sentences = result.scalars().all()
+
+        return sentences
+
 
 __all__ = [
     "ChapterService",

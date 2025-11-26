@@ -2,7 +2,7 @@
 后台任务模块
 """
 
-from .file_processing import celery_app, process_uploaded_file
+from .task import celery_app, process_uploaded_file
 
 __all__ = [
     # Celery应用和任务

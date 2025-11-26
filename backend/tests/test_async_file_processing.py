@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.tasks.file_processing import process_uploaded_file, get_processing_status, retry_failed_project, health_check
+from src.tasks.task import process_uploaded_file, get_processing_status, retry_failed_project, health_check
 from src.services.project_processing import project_processing_service
 from src.services.project import ProjectService
 from src.models.project import Project, ProjectStatus
