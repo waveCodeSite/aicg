@@ -17,6 +17,9 @@
           <el-button type="primary" @click="dialogVisible = true">
             批量生成图片提示词
           </el-button>
+          <el-button type="warning" v-if="chapters.find(c => c.id === selectedChapterId)?.status === 'generated_prompts'" @click="batchGenerateImagesVisible = true">
+            批量生成图片
+          </el-button>
         </el-form-item>
       </el-form>
       
@@ -91,6 +94,35 @@
             <el-button @click="regenerateDialogVisible = false">取消</el-button>
             <el-button type="primary" :loading="regenerating" @click="regeneratePrompts">
               重新生成
+            </el-button>
+          </span>
+        </template>
+      </el-dialog>
+      
+      <!-- 批量生成图片对话框 -->
+      <el-dialog
+        v-model="batchGenerateImagesVisible"
+        title="批量生成图片"
+        width="500px"
+      >
+        <el-form :inline="false" class="dialog-form">
+          <el-form-item label="API Key" style="width: 100%">
+            <el-select v-model="batchGenerateImagesApiKey" placeholder="选择API Key" style="width: 100%">
+              <el-option
+                v-for="key in apiKeys"
+                :key="key.id"
+                :label="`${key.name} (${key.provider})`"
+                :value="key.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="batchGenerateImagesVisible = false">取消</el-button>
+            <el-button type="primary" :loading="batchGeneratingImages" @click="batchGenerateImages">
+              生成
             </el-button>
           </span>
         </template>
@@ -220,6 +252,11 @@ const regenerateApiKey = ref('')
 const regenerateStyle = ref('cinematic')
 const regenerating = ref(false)
 const selectedSentenceIds = ref([])
+
+// 批量生成图片相关状态
+const batchGenerateImagesVisible = ref(false)
+const batchGenerateImagesApiKey = ref('')
+const batchGeneratingImages = ref(false)
 
 // 加载已确认的章节
 const loadChapters = async () => {
@@ -407,6 +444,34 @@ const regeneratePrompts = async () => {
     ElMessage.error('重新生成失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     regenerating.value = false
+  }
+}
+
+// 批量生成图片
+const batchGenerateImages = async () => {
+  if (!batchGenerateImagesApiKey.value) {
+    ElMessage.warning('请选择API Key')
+    return
+  }
+  
+  batchGeneratingImages.value = true
+  try {
+    // 调用批量生成图片的后端接口
+    const response = await api.post('/image/generate-images', {
+      chapter_id: selectedChapterId.value,
+      api_key_id: batchGenerateImagesApiKey.value
+    })
+    
+    if (response.success) {
+      ElMessage.success(response.message)
+      batchGenerateImagesVisible.value = false // 关闭对话框
+      await loadChapters() // 重新加载章节列表以显示更新后的状态
+    }
+  } catch (error) {
+    console.error('批量生成图片失败', error)
+    ElMessage.error('批量生成图片失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    batchGeneratingImages.value = false
   }
 }
 

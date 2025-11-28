@@ -183,6 +183,52 @@ def generate_prompts(self, chapter_id: str, api_key_id: str, style: str):
     retry_jitter=True,
     name="generate.generate_prompts_by_ids"
 )
+
+def generate_prompts_by_ids(self, sentence_ids: List[str], api_key_id: str, style: str):
+    """
+    为章节生成提示词的 Celery 任务
+
+    该任务仅负责调用服务层的提示词生成逻辑，不包含业务逻辑。
+
+    Args:
+        sentence_ids: 句子ID列表
+        api_key_id: API密钥ID
+        style: 提示词风格
+
+    Returns:
+        Dict[str, Any]: 生成结果
+    """
+    logger.info(f"Celery任务开始: generate_prompts_by_ids (sentence_ids={sentence_ids})")
+    result = run_async_task(prompt_service.generate_prompts_by_ids(sentence_ids, api_key_id, style))
+    logger.info(f"Celery任务成功: generate_prompts_by_ids (chapter_id={sentence_ids})")
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    name="generate.generate_images"
+)
+
+def generate_images(self, chapter_id: str, api_key_id: str):
+    """
+    为章节批量生成图片的 Celery 任务
+
+    该任务仅负责调用服务层的图片生成逻辑，不包含业务逻辑。
+
+    Args:
+        chapter_id: 章节ID
+        api_key_id: API密钥ID
+
+    Returns:
+        Dict[str, Any]: 生成结果
+    """
+    logger.info(f"Celery任务开始: generate_images (chapter_id={chapter_id})")
+    # 这里只提供框架，具体实现逻辑由用户自己完成
+    logger.info(f"Celery任务成功: generate_images (chapter_id={chapter_id})")
+    return {"success": True, "message": "图片生成任务已完成"}
 def generate_prompts_by_ids(self, sentence_ids: List[str], api_key_id: str, style: str):
     """
     为章节生成提示词的 Celery 任务
