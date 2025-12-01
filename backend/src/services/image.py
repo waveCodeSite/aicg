@@ -27,30 +27,17 @@ async def retry_with_backoff(task_fn, max_retries=5):
 
     """
     delay = 1.0
-
     for attempt in range(max_retries):
         try:
             return await task_fn()
         except Exception as e:
-            # 只对 429 或 RateLimitError 做重试，其余立即抛出
-            if (
-                    isinstance(e, RateLimitError)
-                    or "429" in str(e)
-                    or "RateLimit" in str(e)
-                    or "IPM limit" in str(e)
-            ):
-                if attempt == max_retries - 1:
-                    raise
-
-                # 指数退避 + 随机抖动
-                sleep_time = delay + random.random() * 0.5
-                print(f"[Retry] 限流，{sleep_time:.2f} 秒后重试 attempt={attempt + 1}/{max_retries}")
-                await asyncio.sleep(sleep_time)
-
-                delay = min(delay * 2, 20)  # 最长等待 20 秒
-            else:
-                # 非限流错误直接抛出
+            if attempt == max_retries - 1:
                 raise
+            # 指数退避 + 随机抖动
+            sleep_time = delay + random.random() * 0.5
+            print(f"[Retry] 限流，{sleep_time:.2f} 秒后重试 attempt={attempt + 1}/{max_retries}")
+            await asyncio.sleep(sleep_time)
+            delay = min(delay * 2, 20)  # 最长等待 20 秒
 
 
 # ============================================================
@@ -89,46 +76,73 @@ async def process_sentence(
                 )
             )
 
-            image_url = result.data[0].url
+            # 检查是否是 base64 响应（Gemini）还是 URL 响应（其他）
+            image_data = result.data[0]
 
-            # --- 6. 统一的下载 Session ---
-            async with aiohttp.ClientSession() as http_session:
-                # --- 下载图片 ---
+            # gemini 格式要特殊处理
+            if hasattr(image_data, 'b64_json') and image_data.b64_json:
+                # Gemini 返回 base64 数据
+                import base64
+                logger.info(f"[LLM] 使用 base64 数据（Gemini 模型）")
+
+                b64_string = image_data.b64_json
+                content_type = image_data.mime
+                file_ext = content_type.split('/')[-1]
+                logger.info(f"[LLM] Base64 字符串长度: {len(b64_string)},ContentType:{content_type}")
+
                 try:
-                    async with http_session.get(image_url) as resp:
-                        if resp.status != 200:
-                            logger.error(f"[Download] 失败 {resp.status} url={image_url}")
-                        content = await resp.read()
-                        # 要保存为临时文件上传到minio上
-
-
+                    content = base64.b64decode(b64_string)
                 except Exception as e:
-                    logger.error(f"[Download] 图片下载错误: {e}")
+                    logger.error(f"[LLM] Base64 解码失败: {e}")
+                    raise
 
-                # --- 上传 MinIO ---
-                file_id = str(uuid.uuid4())
-                upload_file = UploadFile(
-                    filename=f"{file_id}.jpg",
-                    file=io.BytesIO(content),
-                )
+            else:
+                # 其他提供商返回 URL
+                image_url = image_data.url
+                logger.info(f"[LLM] 从 URL 下载图片: {image_url}")
 
-                storage_result = await storage_client.upload_file(
-                    user_id=user_id,
-                    file=upload_file,
-                    metadata={
-                        "user_id": user_id,
-                        "file_id": file_id,
-                        "file_type": "image/jpeg",
-                        "original_filename": f"{file_id}.jpg"
-                    }
-                )
-                object_key = storage_result["object_key"]
+                # --- 6. 统一的下载 Session ---
+                async with aiohttp.ClientSession() as http_session:
+                    # --- 下载图片 ---
+                    try:
+                        async with http_session.get(image_url) as resp:
+                            if resp.status != 200:
+                                logger.error(f"[Download] 失败 {resp.status} url={image_url}")
+                            content = await resp.read()
+                            # 要保存为临时文件上传到minio上
 
-                # --- 更新数据库 ---
-                sentence.image_url = object_key
-                sentence.status = SentenceStatus.GENERATED_IMAGE
-                # 注意：不在这里 flush/commit，避免并发冲突
-                # 统一在主函数中处理
+                    except Exception as e:
+                        logger.error(f"[Download] 图片下载错误: {e}")
+                        raise
+
+                # 默认格式
+                file_ext = 'jpg'
+                content_type = 'image/jpeg'
+
+            # --- 上传 MinIO ---
+            file_id = str(uuid.uuid4())
+            upload_file = UploadFile(
+                filename=f"{file_id}.{file_ext}",
+                file=io.BytesIO(content),
+            )
+
+            storage_result = await storage_client.upload_file(
+                user_id=user_id,
+                file=upload_file,
+                metadata={
+                    "user_id": user_id,
+                    "file_id": file_id,
+                    "file_type": content_type,
+                    "original_filename": f"{file_id}.{file_ext}"
+                }
+            )
+            object_key = storage_result["object_key"]
+
+            # --- 更新数据库 ---
+            sentence.image_url = object_key
+            sentence.status = SentenceStatus.GENERATED_IMAGE
+            # 注意：不在这里 flush/commit，避免并发冲突
+            # 统一在主函数中处理
             return True
 
         except Exception as e:
@@ -227,11 +241,11 @@ if __name__ == "__main__":
     async def test():
         service = ImageService()
         result = await service.generate_images(
-            # api_key_id="d538c04d-b2a5-49eb-b5cb-fbb6be3015cf",
-            api_key_id="6861e67b-6731-4dca-b215-aade208b627f",
-            sentence_ids=["0bbe271a-e0d6-4565-be58-9c3d5898d732", "abfb01b7-58d9-4fb0-849d-e9e5cdef6205"],
-            # model='gemini-2.5-flash-image'
-            model= 'sora_image'
+            api_key_id="d538c04d-b2a5-49eb-b5cb-fbb6be3015cf",
+            # api_key_id="6861e67b-6731-4dca-b215-aade208b627f",
+            sentence_ids=["0bbe271a-e0d6-4565-be58-9c3d5898d732"],
+            model='gemini-3-pro-image-preview'
+            # model= 'sora_image'
         )
         print(result)
 

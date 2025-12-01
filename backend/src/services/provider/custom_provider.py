@@ -55,7 +55,16 @@ class CustomProvider(BaseLLMProvider):
     ):
         """
         调用 自定义 images.generate（纯粹透传）
+        如果模型是 gemini-3-pro-image-preview，则调用 generate_image_gemini
         """
+
+        # 检查是否是 Gemini 图像模型
+        if model and "gemini" in model.lower():
+            # 调用 Gemini 专用方法
+            gemini_response = await self.generate_image_gemini(prompt)
+
+            # 将 Gemini 响应包装成兼容格式
+            return self._wrap_gemini_response(gemini_response)
 
         # 用 semaphore 限制并发
         async with self.semaphore:
@@ -85,12 +94,65 @@ class CustomProvider(BaseLLMProvider):
                 **kwargs
             )
 
+    def _wrap_gemini_response(self, gemini_response: dict):
+        """
+        将 Gemini 响应包装成兼容 OpenAI 格式的对象
+        
+        Gemini API 实际返回格式:
+        {
+            "candidates": [{
+                "content": {
+                    "parts": [
+                        {"text": "..."},
+                        {
+                            "inlineData": {
+                                "mimeType": "image/png",
+                                "data": "<BASE64>"
+                            }
+                        }
+                    ]
+                }
+            }]
+        }
+        """
+        try:
+            parts = gemini_response["candidates"][0]["content"]["parts"]
+
+            base64_data = None
+            mime = None
+
+            # 遍历 parts 查找图片数据
+            for part in parts:
+                # 检查 inlineData 字段（注意是驼峰命名）
+                if "inlineData" in part:
+                    base64_data = part["inlineData"]["data"]
+                    mime = part["inlineData"]["mimeType"]
+                    break
+
+            if not base64_data:
+                raise ValueError("响应中未找到图片数据 (inlineData 或 thoughtSignature)")
+
+            # 创建兼容对象
+            class GeminiImageResponse:
+                def __init__(self, base64_data, mime):
+                    self.data = [GeminiImageData(base64_data, mime)]
+
+            class GeminiImageData:
+                def __init__(self, base64_data, mime):
+                    self.url = None  # Gemini 不返回 URL
+                    self.b64_json = base64_data  # 存储 base64 数据
+                    self.mime = mime
+
+            return GeminiImageResponse(base64_data, mime)
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"无法从 Gemini 响应中提取图像数据: {e}")
+
     async def generate_image_gemini(self, prompt: str):
         """
         Gemini 生成图像（携程异步版本）
 
         """
-        base_url = self.base_url.replace("/v1",'')
+        base_url = self.base_url.replace("/v1", '')
         url = f"{base_url}/v1beta/models/gemini-3-pro-image-preview:generateContent?key={self.api_key}"
         payload = {
             "contents": [
@@ -130,7 +192,8 @@ if __name__ == "__main__":
 
         provider = CustomProvider(api_key="sk-xrVNL5PZvNcpMzwsnyaJZ19nbExkdDRuPXwkI48WyE299Vft",
                                   base_url="https://api.vectorengine.ai/v1")
-        response = await provider.generate_image_gemini("范慎面部特写，惊骇呆滞的表情，瞳孔放大，冷汗从额头滑落，背景是庆国皇宫大殿阴影处，烛光摇曳形成强烈明暗对比，粗犷水墨线条勾勒人物轮廓，烽火台狼烟在窗外隐约可见，画面充满压抑的动荡感，细节呈现衣袍褶皱与面部肌肉紧绷状态")
+        response = await provider.generate_image_gemini(
+            "范慎面部特写，惊骇呆滞的表情，瞳孔放大，冷汗从额头滑落，背景是庆国皇宫大殿阴影处，烛光摇曳形成强烈明暗对比，粗犷水墨线条勾勒人物轮廓，烽火台狼烟在窗外隐约可见，画面充满压抑的动荡感，细节呈现衣袍褶皱与面部肌肉紧绷状态")
         print(response)
 
 
