@@ -61,28 +61,81 @@ async def process_sentence(
         sentence: Sentence,
         llm_provider: BaseLLMProvider,
         semaphore: asyncio.Semaphore,
+        storage_client,
+        user_id: str,
+        db_session=None,
 ):
     """
     单句 LLM 图片生成任务（含限流、错误透传）。
+
+    Args:
+        sentence: 待处理的 Sentence 实例
+        llm_provider: LLM 提供者实例
+        semaphore: 并发控制信号量
+        storage_client: 存储客户端实例
+        user_id: 用户ID
+        db_session: 可选的数据库会话
     """
     async with semaphore:
         try:
             logger.info(f"[LLM] 处理句子 {sentence.id}")
 
             # 加入重试机制
+            model_name = 'Qwen/Qwen-Image'
+            if llm_provider.__class__.__name__ == "CustomProvider":
+                model_name = 'sora_image'
             result = await retry_with_backoff(
                 lambda: llm_provider.generate_image(
                     prompt=sentence.image_prompt,
-                    model="Qwen/Qwen-Image",
+                    model=model_name,
                 )
             )
 
-            url = result.data[0].url
-            return sentence, url, None
+            image_url = result.data[0].url
+
+            # --- 6. 统一的下载 Session ---
+            async with aiohttp.ClientSession() as http_session:
+                # --- 下载图片 ---
+                try:
+                    async with http_session.get(image_url) as resp:
+                        if resp.status != 200:
+                            logger.error(f"[Download] 失败 {resp.status} url={image_url}")
+                        content = await resp.read()
+                        # 要保存为临时文件上传到minio上
+
+
+                except Exception as e:
+                    logger.error(f"[Download] 图片下载错误: {e}")
+
+                # --- 上传 MinIO ---
+                file_id = str(uuid.uuid4())
+                upload_file = UploadFile(
+                    filename=f"{file_id}.jpg",
+                    file=io.BytesIO(content),
+                )
+
+                storage_result = await storage_client.upload_file(
+                    user_id=user_id,
+                    file=upload_file,
+                    metadata={
+                        "user_id": user_id,
+                        "file_id": file_id,
+                        "file_type": "image/jpeg",
+                        "original_filename": f"{file_id}.jpg"
+                    }
+                )
+                object_key = storage_result["object_key"]
+
+                # --- 更新数据库 ---
+                sentence.image_url = object_key
+                sentence.status = SentenceStatus.GENERATED_IMAGE
+                db_session.flush()
+                db_session.commit()
+            return True
 
         except Exception as e:
             logger.error(f"[LLM] 句子 {sentence.id} 错误: {e}", exc_info=True)
-            return sentence, None, e
+            return False
 
 
 # ============================================================
@@ -91,8 +144,7 @@ async def process_sentence(
 
 class ImageService(SessionManagedService):
 
-    async def generate_images(self, api_key_id: str, sentence_ids: List[str]) -> None:
-
+    async def generate_images(self, api_key_id: str, sentence_ids: List[str]) -> dict:
         async with self:
             # --- 1. 查询 Sentence ----
             stmt = (
@@ -103,7 +155,7 @@ class ImageService(SessionManagedService):
                     .selectinload(Paragraph.chapter)
                     .selectinload(Chapter.project)
                 )
-            ).limit(1)
+            )
             result = await self.execute(stmt)
             sentences = result.scalars().all()
 
@@ -124,13 +176,15 @@ class ImageService(SessionManagedService):
                 max_concurrency=5,
                 base_url=api_key.base_url if api_key.base_url else None,
             )
+            logger.info(f"[LLM] 使用 Provider: {llm_provider}, API Key ID: {api_key.id},Base URL: {api_key.base_url}")
 
             # --- 4. 创建统一并发控制 ---
             semaphore = asyncio.Semaphore(5)
 
             # --- 5. 创建任务列表 ---
+            storage_client = await get_storage_client()
             tasks = [
-                process_sentence(sentence, llm_provider, semaphore)
+                process_sentence(sentence, llm_provider, semaphore, storage_client, user_id, self.db_session)
                 for sentence in sentences
             ]
 
@@ -138,51 +192,14 @@ class ImageService(SessionManagedService):
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # --- 6. 统一的下载 Session ---
-            storage_client = await get_storage_client()
-            async with aiohttp.ClientSession() as http_session:
-
-                for sentence, image_url, err in results:
-                    if err or not image_url:
-                        continue  # 跳过失败的句子
-
-                    # --- 下载图片 ---
-                    try:
-                        async with http_session.get(image_url) as resp:
-                            if resp.status != 200:
-                                logger.error(f"[Download] 失败 {resp.status} url={image_url}")
-                                continue
-                            content = await resp.read()
-                            # 要保存为临时文件上传到minio上
-
-
-                    except Exception as e:
-                        logger.error(f"[Download] 图片下载错误: {e}")
-                        continue
-
-                    # --- 上传 MinIO ---
-                    file_id = str(uuid.uuid4())
-                    upload_file = UploadFile(
-                        filename=f"{file_id}.jpg",
-                        file=io.BytesIO(content),
-                    )
-
-                    storage_result = await storage_client.upload_file(
-                        user_id=user_id,
-                        file=upload_file,
-                        metadata={
-                            "user_id": user_id,
-                            "file_id": file_id,
-                            "file_type": "image/jpeg",
-                            "original_filename": f"{file_id}.jpg"
-                        }
-                    )
-                    print(storage_result)
-                    object_key = storage_result["object_key"]
-
-                    # --- 更新数据库 ---
-                    sentence.image_url = object_key
-                    sentence.status = SentenceStatus.GENERATED_IMAGE
+            # 统计成功和失败数量
+            success_count = 0
+            failed_count = 0
+            for res in results:
+                if isinstance(res, Exception) or res is False:
+                    failed_count += 1
+                else:
+                    success_count += 1
 
             await api_key_service.update_usage(api_key.id, user_id)
 
@@ -192,6 +209,29 @@ class ImageService(SessionManagedService):
 
             logger.info("[FINISH] 所有任务完成")
 
+            # 返回统计信息
+            statistics = {
+                "total": len(sentences),
+                "success": success_count,
+                "failed": failed_count
+            }
+            logger.info(f"[STATS] 图片生成统计: {statistics}")
+            return statistics
+
 
 image_service = ImageService()
 __all__ = ["ImageService", "image_service"]
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def test():
+        service = ImageService()
+        result = await service.generate_images(
+            api_key_id="0e15acdd-1602-4346-8405-69744341be53",
+            sentence_ids=["0bbe271a-e0d6-4565-be58-9c3d5898d732"]
+        )
+        print(result)
+
+    asyncio.run(test())

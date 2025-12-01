@@ -7,6 +7,7 @@ export function useTaskPoller() {
   const isPolling = ref(false)
   const pollInterval = ref(null)
   const taskResult = ref(null)
+  const taskStatistics = ref(null)
 
   const stopPolling = () => {
     if (pollInterval.value) {
@@ -22,20 +23,28 @@ export function useTaskPoller() {
     stopPolling()
     isPolling.value = true
     taskStatus.value = 'PENDING'
+    taskStatistics.value = null
 
     pollInterval.value = setInterval(async () => {
       try {
         const response = await api.get(`/tasks/${taskId}`)
         taskStatus.value = response.status
-        
+
         if (response.status === 'SUCCESS') {
           taskResult.value = response.result
+          taskStatistics.value = response.statistics
           stopPolling()
-          if (onSuccess) onSuccess(response.result)
+          if (onSuccess) onSuccess(response.statistics)
         } else if (response.status === 'FAILURE' || response.status === 'REVOKED') {
           stopPolling()
-          if (onError) onError(response)
-          else ElMessage.error('任务执行失败')
+          // Pass the error result to the error handler
+          if (onError) {
+            onError(response.result)
+          } else {
+            // Default error handling
+            const errorMsg = response.result?.message || '任务执行失败'
+            ElMessage.error(errorMsg)
+          }
         }
       } catch (error) {
         console.error('Task polling error:', error)
@@ -53,6 +62,7 @@ export function useTaskPoller() {
     taskStatus,
     isPolling,
     taskResult,
+    taskStatistics,
     startPolling,
     stopPolling
   }

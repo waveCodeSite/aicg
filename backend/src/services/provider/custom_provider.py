@@ -60,3 +60,16 @@ class CustomProvider(BaseLLMProvider):
                 prompt=prompt,
                 **kwargs
             )
+
+
+if __name__ == "__main__":
+    import asyncio
+
+
+    async def test():
+        provider = CustomProvider(api_key="sk-ibB9WqeYysBiJnjy8eF2B7290bEf409c8d92476c9086BeEa",
+                                  base_url="https://jyapi.ai-wx.cn/v1")
+        response = await provider.generate_image("A beautiful sunset over the mountains", model="sora_image")
+        print(response)
+
+    asyncio.run(test())

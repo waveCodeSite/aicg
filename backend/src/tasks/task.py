@@ -169,11 +169,12 @@ def generate_prompts(self, chapter_id: str, api_key_id: str, style: str):
         style: 提示词风格
 
     Returns:
-        Dict[str, Any]: 生成结果
+        Dict[str, Any]: 生成结果，包含统计信息
     """
     logger.info(f"Celery任务开始: generate_prompts (chapter_id={chapter_id})")
     result = run_async_task(prompt_service.generate_prompts_batch(chapter_id, api_key_id, style))
     logger.info(f"Celery任务成功: generate_prompts (chapter_id={chapter_id})")
+    return result
 
 
 @celery_app.task(
@@ -223,13 +224,14 @@ def generate_images(self, api_key_id: str, sentences_ids: list[str]):
         sentences_ids: 句子ID列表（可选，与chapter_id二选一）
 
     Returns:
-        Dict[str, Any]: 生成结果
+        Dict[str, Any]: 生成结果，包含统计信息
     """
 
     logger.info(f"Celery任务开始: generate_images (sentences_ids={sentences_ids})")
 
-    run_async_task(image_service.generate_images(api_key_id, sentences_ids))
-    return {"success": True, "message": "图片生成任务已完成"}
+    result = run_async_task(image_service.generate_images(api_key_id, sentences_ids))
+    logger.info(f"Celery任务成功: generate_images (sentences_ids={sentences_ids})")
+    return result
 
 
 # ---------------------------

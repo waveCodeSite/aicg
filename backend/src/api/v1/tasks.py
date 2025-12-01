@@ -53,11 +53,19 @@ async def get_task_status(
     获取任务状态（优化：不会因异常对象导致 500）
     """
     task_result = AsyncResult(task_id, app=celery_app)
+    
+    result = safe_result(task_result)
+    statistics = None
+    
+    # 如果结果是字典且包含统计信息，提取出来
+    if isinstance(result, dict) and ('total' in result or 'success' in result or 'failed' in result):
+        statistics = result
 
     return TaskStatusResponse(
         task_id=task_id,
         status=task_result.status,
-        result=safe_result(task_result)
+        result=result,
+        statistics=statistics
     )
 
 

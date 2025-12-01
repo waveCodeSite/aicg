@@ -54,7 +54,7 @@ async def process_sentence(
         Exception: LLM 调用失败等异常
     """
     # 根据不同供应商选择模型
-    model_name = ""
+    model_name = "deepseek-v3-250324"
     if api_key.provider == "deepseek":
         model_name = "deepseek-chat"
     if api_key.provider == "volcengine":
@@ -114,10 +114,10 @@ class PromptService(SessionManagedService):
     # 基础系统提示语（作为所有风格的基础指令）
     BASE_SYSTEM_PROMPT = """
 你是一个专业的AI绘画提示词生成专家(AI Director)。
-你的任务是将中文小说句子转换为高质量的英文Stable Diffusion提示词。
+你的任务是将中文小说句子转换为高质量的提示词。
 
 请遵循以下规则：
-1. 输出必须是纯英文文本，不要包含markdown语法或解释性内容。
+1. 输出必须是纯文本，不要包含markdown语法或解释性内容。
 2. 不要加入前缀/后缀，例如“Here is the prompt:”。
 3. 提示词结构建议为：Subject, Action, Background, Lighting, Style, Quality。
 4. 正确表达句子的视觉元素、情绪与意境。
@@ -170,7 +170,7 @@ class PromptService(SessionManagedService):
     # ------------------------------------------------------------
 
     async def _generate_prompts(self, sentences: List[Sentence], api_key: APIKey, style: str,
-                                update: bool = True) -> None:
+                                update: bool = True) -> dict:
         """
         核心执行方法：批量生成提示词 + 写数据库 + 更新章节状态。
 
@@ -179,6 +179,9 @@ class PromptService(SessionManagedService):
             api_key (APIKey): API Key 对象
             style (str): 生成提示词的风格
             update (bool): 是否更新章节，默认为 True
+            
+        Returns:
+            dict: 统计信息 {"total": int, "success": int, "failed": int}
         """
 
         # 构建完整系统提示词
@@ -203,15 +206,27 @@ class PromptService(SessionManagedService):
         ]
 
         logger.info(f"[LLM] 开始批量生成提示词，总数={len(sentences)}")
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         logger.info("[LLM] 所有句子处理完成")
+
+        # 统计成功和失败数量
+        success_count = 0
+        failed_count = 0
 
         # 写入返回结果到数据库
         logger.info("[DB] 写入生成结果到数据库")
-        for sentence, prompt in results:
+        for result in results:
+            if isinstance(result, Exception):
+                # 处理失败
+                failed_count += 1
+                logger.error(f"[LLM] 句子处理失败: {result}")
+                continue
+            
+            sentence, prompt = result
             sentence.image_prompt = prompt
             sentence.status = SentenceStatus.GENERATED_PROMPTS
             sentence.image_style = style
+            success_count += 1
 
         chapter = sentences[0].paragraph.chapter
         if update:
@@ -227,12 +242,21 @@ class PromptService(SessionManagedService):
         await self.db_session.flush()
         await self.db_session.commit()
         logger.info("[DB] 数据库更新完成")
+        
+        # 返回统计信息
+        statistics = {
+            "total": len(sentences),
+            "success": success_count,
+            "failed": failed_count
+        }
+        logger.info(f"[STATS] 提示词生成统计: {statistics}")
+        return statistics
 
     # ============================================================
     # 对外方法：按章节处理
     # ============================================================
 
-    async def generate_prompts_batch(self, chapter_id: str, api_key_id: str, style: str = "cinematic") -> None:
+    async def generate_prompts_batch(self, chapter_id: str, api_key_id: str, style: str = "cinematic") -> dict:
         """
         批量生成提示词（按章节 ID 获取所有待处理句子）
 
@@ -240,6 +264,9 @@ class PromptService(SessionManagedService):
             chapter_id (str): 章节 ID
             api_key_id (str): API Key ID
             style (str): 生成风格
+            
+        Returns:
+            dict: 统计信息 {"total": int, "success": int, "failed": int}
         """
         async with self:
             # 查询章节句子
@@ -254,13 +281,13 @@ class PromptService(SessionManagedService):
             api_key = await self._load_api_key(api_key_id, user_id)
 
             # 统一执行批量处理
-            await self._generate_prompts(sentences, api_key, style)
+            return await self._generate_prompts(sentences, api_key, style)
 
     # ============================================================
     # 对外方法：按句子 ID 数组处理
     # ============================================================
 
-    async def generate_prompts_by_ids(self, sentence_ids: List[str], api_key_id: str, style: str = "cinematic") -> None:
+    async def generate_prompts_by_ids(self, sentence_ids: List[str], api_key_id: str, style: str = "cinematic") -> dict:
         """
         批量生成提示词（按句子 ID 列表处理）
 
@@ -268,6 +295,9 @@ class PromptService(SessionManagedService):
             sentence_ids (List[str]): 多个句子 ID
             api_key_id (str): API Key ID
             style (str): 生成风格
+            
+        Returns:
+            dict: 统计信息 {"total": int, "success": int, "failed": int}
         """
         async with self:
             # 根据 ID 查询句子
@@ -290,7 +320,7 @@ class PromptService(SessionManagedService):
             api_key = await self._load_api_key(api_key_id, user_id)
 
             # 执行批量生成
-            await self._generate_prompts(sentences, api_key, style, False)
+            return await self._generate_prompts(sentences, api_key, style, False)
 
 
 prompt_service = PromptService()
