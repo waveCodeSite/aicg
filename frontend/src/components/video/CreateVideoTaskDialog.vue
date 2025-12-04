@@ -151,6 +151,18 @@
             <span class="form-tip">为视频添加背景音乐，将与原音频混合</span>
           </el-form-item>
 
+          <el-form-item label="BGM音量" v-if="form.bgm_id">
+            <el-slider 
+              v-model="bgmVolumeDisplay" 
+              :min="0" 
+              :max="50" 
+              :marks="{ 0: '0%', 15: '15%', 30: '30%', 50: '50%' }"
+              :format-tooltip="val => `${val}%`"
+              style="margin: 0 12px"
+            />
+            <span class="form-tip">BGM音量占比，默认15%不会盖过原音</span>
+          </el-form-item>
+
           <el-divider content-position="left">视频速度</el-divider>
           <el-form-item label="播放速度">
             <el-slider 
@@ -207,6 +219,7 @@ const bgmList = ref([])
 const activeCollapse = ref([])
 const enableZoom = ref(true)
 const zoomSpeedDisplay = ref(5) // 对应 0.0005
+const bgmVolumeDisplay = ref(15) // 对应 0.15
 
 const form = reactive({
   chapter_id: '',
@@ -220,6 +233,7 @@ const form = reactive({
     audio_bitrate: '192k',
     zoom_speed: 0.0005,
     video_speed: 1.0,
+    bgm_volume: 0.15,
     llm_model: 'gpt-4o-mini',
     subtitle_style: {
       font: 'Arial',
@@ -247,6 +261,10 @@ watch(() => props.modelValue, (val) => {
 
 watch(zoomSpeedDisplay, (val) => {
   form.gen_setting.zoom_speed = val / 10000
+})
+
+watch(bgmVolumeDisplay, (val) => {
+  form.gen_setting.bgm_volume = val / 100
 })
 
 // 方法
@@ -340,6 +358,8 @@ const resetForm = () => {
     audio_codec: 'aac',
     audio_bitrate: '192k',
     zoom_speed: 0.0005,
+    video_speed: 1.0,
+    bgm_volume: 0.15,
     llm_model: 'gpt-4o-mini',
     subtitle_style: {
       font: 'Arial',
@@ -350,6 +370,7 @@ const resetForm = () => {
   }
   enableZoom.value = true
   zoomSpeedDisplay.value = 5
+  bgmVolumeDisplay.value = 15
 }
 </script>
 

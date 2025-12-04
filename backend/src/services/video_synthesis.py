@@ -494,12 +494,67 @@ class VideoSynthesisService(SessionManagedService):
                 if not success:
                     raise BusinessLogicError("视频拼接失败")
 
-                # 16. 更新状态为上传中
+                # 16. 混合BGM（如果有）
+                if task.background_id:
+                    logger.info(f"开始混合BGM: background_id={task.background_id}")
+                    try:
+                        # 16.1 加载BGM信息
+                        from src.services.bgm_service import BGMService
+                        bgm_service = BGMService(self.db_session)
+                        bgm = await bgm_service.get_bgm_by_id(
+                            str(task.background_id),
+                            str(task.user_id)
+                        )
+                        
+                        if not bgm or not bgm.file_key:
+                            logger.warning(f"BGM不存在或无file_key，跳过BGM混合")
+                        else:
+                            # 16.2 下载BGM文件
+                            storage = await self._get_storage_client()
+                            bgm_content = await storage.download_file(bgm.file_key)
+                            
+                            # 保存到临时文件
+                            import os
+                            bgm_ext = os.path.splitext(bgm.file_name)[1] or ".mp3"
+                            bgm_temp_path = temp_dir / f"bgm{bgm_ext}"
+                            with open(bgm_temp_path, 'wb') as f:
+                                f.write(bgm_content)
+                            
+                            logger.info(f"BGM下载成功: {bgm.name}, 大小={len(bgm_content)} bytes")
+                            
+                            # 16.3 获取BGM音量配置（从gen_setting读取，默认0.15）
+                            bgm_volume = gen_setting.get("bgm_volume", 0.15)
+                            logger.info(f"BGM音量配置: {bgm_volume}")
+                            
+                            # 16.4 混合BGM
+                            from src.utils.ffmpeg_utils import mix_bgm_with_video
+                            final_video_with_bgm_path = temp_dir / "final_video_with_bgm.mp4"
+                            
+                            mix_success = mix_bgm_with_video(
+                                str(final_video_path),
+                                str(bgm_temp_path),
+                                str(final_video_with_bgm_path),
+                                bgm_volume=bgm_volume,
+                                loop_bgm=True
+                            )
+                            
+                            if mix_success:
+                                # 使用混合后的视频
+                                final_video_path = final_video_with_bgm_path
+                                logger.info("BGM混合成功，使用混合后的视频")
+                            else:
+                                logger.warning("BGM混合失败，使用原视频")
+                                
+                    except Exception as e:
+                        logger.error(f"BGM混合过程出错: {e}", exc_info=True)
+                        logger.warning("BGM混合失败，继续使用原视频")
+
+                # 17. 更新状态为上传中
                 await task_service.update_task_status(task.id, VideoTaskStatus.UPLOADING)
                 task.update_progress(90)
                 await self.db_session.flush()
 
-                # 17. 上传到MinIO
+                # 18. 上传到MinIO
                 storage = await self._get_storage_client()
                 video_key = storage.generate_object_key(
                     str(task.user_id),
@@ -522,10 +577,10 @@ class VideoSynthesisService(SessionManagedService):
 
                 video_key = result["object_key"]
 
-                # 18. 获取视频时长
+                # 19. 获取视频时长
                 duration = int(get_audio_duration(str(final_video_path)) or 0)
 
-                # 19. 标记任务完成
+                # 20. 标记任务完成
                 await task_service.mark_task_completed(task.id, video_key, duration)
                 task.update_progress(100)
                 await self.db_session.flush()

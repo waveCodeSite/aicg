@@ -85,6 +85,13 @@ test = [
     "aiosqlite>=0.19.0",
 ]
 
+gpu = [
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12==9.*",
+    # 如果还需要 PyTorch 或 TensorFlow 的 CUDA 版本，也放这里
+    # "torch==2.3.0+cu121", 
+]
+
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 

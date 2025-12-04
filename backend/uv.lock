@@ -62,6 +62,10 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
 ]
+gpu = [
+    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cudnn-cu12" },
+]
 test = [
     { name = "aiosqlite" },
     { name = "httpx" },
@@ -97,6 +101,8 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "minio", specifier = ">=7.2.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.6.0" },
+    { name = "nvidia-cublas-cu12", marker = "extra == 'gpu'" },
+    { name = "nvidia-cudnn-cu12", marker = "extra == 'gpu'", specifier = "==9.*" },
     { name = "openai", specifier = ">=2.8.1" },
     { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
@@ -122,7 +128,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=23.2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
-provides-extras = ["dev", "test"]
+provides-extras = ["dev", "test", "gpu"]
 
 [[package]]
 name = "aiofiles"
@@ -2163,6 +2169,29 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7d/e4/68d2f474df2cb671b2b6c2986a02e520671295647dad82484cde80ca427b/numpy-2.3.5-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ffac52f28a7849ad7576293c0cb7b9f08304e8f7d738a8cb8a90ec4c55a998eb", size = 14391768, upload-time = "2025-11-16T22:52:33.593Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b8/50/94ccd8a2b141cb50651fddd4f6a48874acb3c91c8f0842b08a6afc4b0b21/numpy-2.3.5-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:63c0e9e7eea69588479ebf4a8a270d5ac22763cc5854e9a7eae952a3908103f7", size = 16729263, upload-time = "2025-11-16T22:52:36.369Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2d/ee/346fa473e666fe14c52fcdd19ec2424157290a032d4c41f98127bfb31ac7/numpy-2.3.5-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:f16417ec91f12f814b10bafe79ef77e70113a2f5f7018640e7425ff979253425", size = 12967213, upload-time = "2025-11-16T22:52:39.38Z" },
+]
+
+[[package]]
+name = "nvidia-cublas-cu12"
+version = "12.9.1.4"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/82/6c/90d3f532f608a03a13c1d6c16c266ffa3828e8011b1549d3b61db2ad59f5/nvidia_cublas_cu12-12.9.1.4-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:7a950dae01add3b415a5a5cdc4ec818fb5858263e9cca59004bb99fdbbd3a5d6", size = 575006342, upload-time = "2025-06-05T20:04:16.902Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/77/3c/aa88abe01f3be3d1f8f787d1d33dc83e76fec05945f9a28fbb41cfb99cd5/nvidia_cublas_cu12-12.9.1.4-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:453611eb21a7c1f2c2156ed9f3a45b691deda0440ec550860290dc901af5b4c2", size = 581242350, upload-time = "2025-06-05T20:04:51.979Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/45/a1/a17fade6567c57452cfc8f967a40d1035bb9301db52f27808167fbb2be2f/nvidia_cublas_cu12-12.9.1.4-py3-none-win_amd64.whl", hash = "sha256:1e5fee10662e6e52bd71dec533fbbd4971bb70a5f24f3bc3793e5c2e9dc640bf", size = 553153899, upload-time = "2025-06-05T20:13:35.556Z" },
+]
+
+[[package]]
+name = "nvidia-cudnn-cu12"
+version = "9.16.0.29"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "nvidia-cublas-cu12" },
+]
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/8a/f0/c3b578dd84d56eb0a45968afcafee93ed1c0b125d92394ce08be6c78c9ed/nvidia_cudnn_cu12-9.16.0.29-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:4b09c43096db582f110c5572d0bcbd98b30d709e860a8f73c6c3846baa83b8d2", size = 646661958, upload-time = "2025-11-14T20:32:03.923Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/73/ad/bf4d7b6b097b53f0b36551466cbc196b84e27a0252d89d6a9d2afc5f7c5f/nvidia_cudnn_cu12-9.16.0.29-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:78d05b4434dacc7dd9bc903d5c33a2f28a5f0064d02568ef7b2418f89f6c5922", size = 647663273, upload-time = "2025-11-14T20:33:10.601Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2b/f6/bd24c3ebf031fb1a8dc954c7f3089948ea2f617595ed9367f92c505ac0b4/nvidia_cudnn_cu12-9.16.0.29-py3-none-win_amd64.whl", hash = "sha256:142e2bd646a4573ab17d61a24c6359155cdfe1f34c67fc305b71222a7ae45b8e", size = 634022990, upload-time = "2025-11-14T20:34:11.493Z" },
 ]
 
 [[package]]

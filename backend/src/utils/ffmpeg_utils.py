@@ -167,12 +167,16 @@ def build_sentence_video_command(
     video_codec = gen_setting.get("video_codec", "libx264")
     audio_codec = gen_setting.get("audio_codec", "aac")
     audio_bitrate = gen_setting.get("audio_bitrate", "192k")
+    video_speed = gen_setting.get("video_speed", 1.0)  # 视频速度，默认1.0（正常速度）
+    zoom_speed = gen_setting.get("zoom_speed", 0.00015)  # Ken Burns缩放速度，默认0.00015
 
     # 解析分辨率
     width, height = resolution.split('x')
     
-    # 计算总帧数
-    total_frames = int(fps * duration)
+    # 计算总帧数（考虑视频速度）
+    # 如果速度是2.0，视频会快2倍，所以帧数减半
+    effective_duration = duration / video_speed
+    total_frames = int(fps * effective_duration)
 
     # 增强的Ken Burns效果：
     # 1. 缩放：从1.0逐渐放大到1.15（更明显的缩放）
@@ -185,35 +189,68 @@ def build_sentence_video_command(
     # d: 持续帧数
     # s: 输出尺寸
     
+    # 构建视频滤镜链
+    video_filters = (
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+        f"zoompan="
+        f"z='min(1+{zoom_speed}*on,1.15)':"  # 使用配置的缩放速度
+        f"x='iw/2-(iw/zoom/2)-{int(width)*0.05}*on/{total_frames}':"  # 从左向右平移
+        f"y='ih/2-(ih/zoom/2)-{int(height)*0.05}*on/{total_frames}':"  # 从上向下平移
+        f"d={total_frames}:"
+        f"s={width}x{height}:"
+        f"fps={fps}"
+    )
+    
+    # 如果视频速度不是1.0，添加setpts滤镜
+    if video_speed != 1.0:
+        # setpts用于调整视频时间戳
+        # PTS/(speed) 会让视频加速，例如 speed=2.0 时，PTS/2 让视频快2倍
+        video_filters += f",setpts=PTS/{video_speed}"
+    
+    # 构建音频滤镜链
+    # atempo用于调整音频速度，同时保持音调
+    # atempo的范围是0.5-2.0，如果需要更大的速度变化，需要链式调用
+    audio_filters = "[1:a]"
+    if video_speed != 1.0:
+        # 计算需要多少个atempo滤镜
+        # atempo单次只能在0.5-2.0范围内调整
+        remaining_speed = video_speed
+        atempo_chain = []
+        
+        while remaining_speed > 2.0:
+            atempo_chain.append("atempo=2.0")
+            remaining_speed /= 2.0
+        
+        while remaining_speed < 0.5:
+            atempo_chain.append("atempo=0.5")
+            remaining_speed /= 0.5
+        
+        if remaining_speed != 1.0:
+            atempo_chain.append(f"atempo={remaining_speed}")
+        
+        if atempo_chain:
+            audio_filters += ",".join(atempo_chain)
+    
+    audio_filters += "[a]"
+    
     if subtitle_filter:
         # 有字幕时的滤镜链
         filter_complex = (
-            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
-            f"zoompan="
-            f"z='min(1+0.00015*on,1.15)':"  # 缩放从1.0到1.15
-            f"x='iw/2-(iw/zoom/2)-{int(width)*0.05}*on/{total_frames}':"  # 从左向右平移
-            f"y='ih/2-(ih/zoom/2)-{int(height)*0.05}*on/{total_frames}':"  # 从上向下平移
-            f"d={total_frames}:"
-            f"s={width}x{height}:"
-            f"fps={fps}[bg];"
-            f"[bg]{subtitle_filter}[v]"
+            f"{video_filters}[bg];"
+            f"[bg]{subtitle_filter}[v];"
+            f"{audio_filters}"
         )
         map_video = "[v]"
+        map_audio = "[a]"
     else:
         # 无字幕时的滤镜链
         filter_complex = (
-            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
-            f"zoompan="
-            f"z='min(1+0.00015*on,1.15)':"
-            f"x='iw/2-(iw/zoom/2)-{int(width)*0.05}*on/{total_frames}':"
-            f"y='ih/2-(ih/zoom/2)-{int(height)*0.05}*on/{total_frames}':"
-            f"d={total_frames}:"
-            f"s={width}x{height}:"
-            f"fps={fps}[v]"
+            f"{video_filters}[v];"
+            f"{audio_filters}"
         )
         map_video = "[v]"
+        map_audio = "[a]"
 
     # 构建命令
     command = [
@@ -225,7 +262,7 @@ def build_sentence_video_command(
         "-i", audio_path,
         "-filter_complex", filter_complex,
         "-map", map_video,
-        "-map", "1:a",
+        "-map", map_audio,
         "-c:v", video_codec,
         "-preset", "slow",  # 使用slow预设获得最佳质量
         "-crf", "20",  # 提高质量（更低的CRF值）
@@ -284,6 +321,92 @@ def concatenate_videos(video_paths: List[Path], output_path: Path, concat_file_p
         return False
 
 
+
+def mix_bgm_with_video(
+        video_path: str,
+        bgm_path: str,
+        output_path: str,
+        bgm_volume: float = 0.15,
+        loop_bgm: bool = True
+) -> bool:
+    """
+    将BGM混合到视频中
+
+    Args:
+        video_path: 输入视频路径
+        bgm_path: BGM音频路径
+        output_path: 输出视频路径
+        bgm_volume: BGM音量（0.0-1.0），默认0.15（15%）
+        loop_bgm: 是否循环BGM以匹配视频长度
+
+    Returns:
+        是否成功
+    """
+    try:
+        # 获取视频时长
+        video_duration = get_audio_duration(video_path)
+        if not video_duration:
+            logger.error("无法获取视频时长")
+            return False
+
+        # 获取BGM时长
+        bgm_duration = get_audio_duration(bgm_path)
+        if not bgm_duration:
+            logger.error("无法获取BGM时长")
+            return False
+
+        logger.info(f"视频时长: {video_duration:.2f}s, BGM时长: {bgm_duration:.2f}s, BGM音量: {bgm_volume}")
+
+        # 构建FFmpeg命令
+        # 使用 amix 滤镜混合原音频和BGM
+        # 如果BGM较短，使用 aloop 循环；如果较长，会自动截断
+        
+        if loop_bgm and bgm_duration < video_duration:
+            # 计算需要循环的次数
+            loop_count = int(video_duration / bgm_duration) + 1
+            
+            # 构建滤镜：调整BGM音量，循环BGM，然后与原音频混合
+            filter_complex = (
+                f"[1:a]volume={bgm_volume},aloop=loop={loop_count}:size=2e+09[bgm];"
+                f"[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
+        else:
+            # BGM足够长或不需要循环，直接混合
+            filter_complex = (
+                f"[1:a]volume={bgm_volume}[bgm];"
+                f"[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-i", video_path,  # 输入视频
+            "-i", bgm_path,    # 输入BGM
+            "-filter_complex", filter_complex,
+            "-map", "0:v",     # 使用视频流
+            "-map", "[aout]",  # 使用混合后的音频流
+            "-c:v", "copy",    # 视频流直接复制，不重新编码
+            "-c:a", "aac",     # 音频编码为AAC
+            "-b:a", "192k",    # 音频比特率
+            "-shortest",       # 以最短的流为准
+            output_path
+        ]
+
+        # 执行命令
+        success, stdout, stderr = run_ffmpeg_command(command, timeout=600)
+
+        if success:
+            logger.info(f"BGM混合成功: {output_path}")
+        else:
+            logger.error(f"BGM混合失败: {stderr}")
+
+        return success
+
+    except Exception as e:
+        logger.error(f"BGM混合异常: {e}")
+        return False
+
+
 __all__ = [
     "check_ffmpeg_installed",
     "get_audio_duration",
@@ -291,4 +414,6 @@ __all__ = [
     "run_ffmpeg_command",
     "build_sentence_video_command",
     "concatenate_videos",
+    "mix_bgm_with_video",
 ]
+

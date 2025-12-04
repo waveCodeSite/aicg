@@ -14,7 +14,7 @@ class WhisperTranscriptionService:
         """
         logger.info(f"🔄 正在加载 Whisper 模型: {model_size} ...")
         self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
-        self.cc = OpenCC('t2s')  # 繁→简转换
+        self.cc = OpenCC("t2s")  # 繁→简转换
         logger.info(f"✅ 模型加载完成")
 
     @staticmethod
@@ -48,7 +48,9 @@ class WhisperTranscriptionService:
             temperature=0.0,
         )
 
-        logger.info(f"ℹ️ 检测语言: {info.language} (置信度: {info.language_probability:.2f})")
+        logger.info(
+            f"ℹ️ 检测语言: {info.language} (置信度: {info.language_probability:.2f})"
+        )
 
         results = []
         srt_content = ""
@@ -57,23 +59,27 @@ class WhisperTranscriptionService:
 
             # 转成简体
             text_simplified = self.cc.convert(segment.text.strip())
-            logger.info(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {text_simplified}")
+            logger.info(
+                f"[{segment.start:.2f}s -> {segment.end:.2f}s] {text_simplified}"
+            )
 
             item = {
                 "id": i,
                 "start": segment.start,
                 "end": segment.end,
                 "text": text_simplified,
-                "words": []
+                "words": [],
             }
 
             if segment.words:
                 for w in segment.words:
-                    item["words"].append({
-                        "word": self.cc.convert(w.word),
-                        "start": w.start,
-                        "end": w.end
-                    })
+                    item["words"].append(
+                        {
+                            "word": self.cc.convert(w.word),
+                            "start": w.start,
+                            "end": w.end,
+                        }
+                    )
 
             results.append(item)
 
@@ -100,12 +106,10 @@ class WhisperTranscriptionService:
 
         return results, srt_content
 
+
 transcription_service = WhisperTranscriptionService()
 
-all = [
-    "WhisperTranscriptionService",
-    "transcription_service"
-]
+all = ["WhisperTranscriptionService", "transcription_service"]
 
 
 # -------------------------

@@ -158,7 +158,14 @@ class SubtitleService:
 {timeline_json}
 
 请纠正字幕时间轴中的错别字。
-⚠️ 注意：只修正错别字，不要删除、增加或重组任何内容，必须保持相同的词数和顺序。"""
+
+🚨 严格要求：
+1. 每个segment的words数组长度必须与原始完全一致
+2. 只修正明显的错别字，不改变词语
+3. 不确定的保持原样
+4. 返回前请验证词数是否一致
+
+请返回纠正后的完整JSON。"""
 
             # 调用LLM
             logger.info(f"[LLM纠错] 开始纠正字幕时间轴，模型: {model}")
@@ -204,11 +211,25 @@ class SubtitleService:
                         corrected_words = corrected_seg["words"]
                         original_words = segments[idx]["words"]
                         
+                        # ⚠️ 严格验证：词数必须完全一致，否则会导致时间轴错位
+                        if len(corrected_words) != len(original_words):
+                            logger.warning(
+                                f"[LLM纠错] ⚠️ Segment {idx} 词数不匹配: "
+                                f"原始{len(original_words)}词, 纠正后{len(corrected_words)}词, "
+                                f"拒绝此segment的词级纠正以避免时间轴错位"
+                            )
+                            # 跳过这个segment的词级纠正，但保留segment级别的文本纠正
+                            continue
+                        
                         # 更新每个word的文本，保持时间信息
                         for i, corrected_word in enumerate(corrected_words):
                             if i < len(original_words):
+                                old_word = original_words[i]["word"]
+                                new_word = corrected_word.get("word", old_word)
                                 # 保持原始时间，只更新文本
-                                original_words[i]["word"] = corrected_word.get("word", original_words[i]["word"])
+                                original_words[i]["word"] = new_word
+                                if old_word != new_word:
+                                    logger.debug(f"[LLM纠错]   Word {i}: '{old_word}' -> '{new_word}'")
 
             logger.info(f"[LLM纠错] 字幕时间轴纠正完成")
             return subtitle_data

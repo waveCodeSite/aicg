@@ -6,7 +6,10 @@
 
 - 🚀 **异步架构**: FastAPI + SQLAlchemy 2.0 + asyncpg
 - 📝 **智能解析**: 百万字级文档章节自动识别
-- 🎬 **视频生成**: 句子级图片、音频、字幕自动生成
+- 🎬 **视频生成**: 
+  - **智能缓存**: 增量生成视频，避免重复计算 (New!)
+  - **多模态**: 集成 Flux/SDXL 绘图，支持多种 TTS 引擎
+  - **字幕纠错**: 基于 LLM 的智能字幕校对
 - 🔄 **任务队列**: Celery + Redis高并发处理
 - 📊 **实时监控**: WebSocket进度推送 + Prometheus指标
 - 🔐 **安全认证**: JWT + 密钥加密存储
@@ -42,6 +45,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 同步依赖
 uv sync --index=https://pypi.tuna.tsinghua.edu.cn/simple
+
+# GPU加速可选
+uv pip install .[gpu] -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 运行数据库迁移
 uv run alembic upgrade head
