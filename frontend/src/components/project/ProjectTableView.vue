@@ -12,6 +12,14 @@
           <div class="project-title">
             <el-text class="title-text" truncated>{{ row.title }}</el-text>
             <el-tag
+              v-if="row.type"
+              :type="row.type === 'ai_movie' ? 'primary' : 'success'"
+              size="small"
+              effect="dark"
+            >
+              {{ row.type === 'ai_movie' ? '电影' : '解说' }}
+            </el-tag>
+            <el-tag
               v-if="row.is_public"
               type="info"
               size="small"

@@ -24,6 +24,9 @@
               <el-tag :type="projectsStore.getStatusType(project.status)" effect="plain">
                 {{ projectsStore.getStatusText(project.status) }}
               </el-tag>
+              <el-tag :type="project.type === 'ai_movie' ? 'primary' : 'success'" effect="plain">
+                {{ project.type === 'ai_movie' ? 'AI 电影' : '解说视频' }}
+              </el-tag>
               <el-tag v-if="project.is_public" type="info" effect="plain">
                 公开
               </el-tag>
@@ -134,6 +137,7 @@
           编辑项目
         </el-button>
         <el-button
+          v-if="project.type !== 'ai_movie'"
           type="primary"
           :icon="Edit"
           @click="handleOpenStudio"
@@ -141,6 +145,15 @@
           进入内容工坊
         </el-button>
         <el-button
+          v-if="project.type === 'ai_movie'"
+          type="primary"
+          :icon="VideoCamera"
+          @click="handleOpenMovieStudio"
+        >
+          进入电影工作室
+        </el-button>
+        <el-button
+          v-if="project.type !== 'ai_movie'"
           type="primary"
           @click="handleOpenDirector"
         >
@@ -232,6 +245,7 @@
   import { useProjectsStore } from '@/stores/projects'
   import { useProject } from '@/composables/useProject'
   import ProjectEditor from '@/components/project/ProjectEditor.vue'
+  import { VideoCamera, Edit, VideoPlay, Lock, Refresh, RefreshRight, ArrowLeft } from '@element-plus/icons-vue'
 
   // Props定义
   const props = defineProps({
@@ -312,6 +326,29 @@
       name: 'DirectorEngine',
       params: { projectId: props.projectId }
     })
+  }
+
+  // 进入电影工作室
+  const handleOpenMovieStudio = async () => {
+    // 如果是电影，通常需要先选择章节。简单起见，这里如果只有一个章节则直接进入，否则跳转到章节选择或默认第一章
+    try {
+      // 获取章节列表以获得第一个章节的ID
+      const chapters = await projectsStore.fetchProjectChapters(props.projectId)
+      if (chapters && chapters.length > 0) {
+        router.push({
+          name: 'MovieStudio',
+          params: { 
+            projectId: props.projectId,
+            id: chapters[0].id // 暂时选第一章
+          }
+        })
+      } else {
+        ElMessage.warning('项目暂无章节，请先添加内容')
+      }
+    } catch (error) {
+      console.error('获取章节列表失败:', error)
+      ElMessage.error('无法进入电影工作室')
+    }
   }
 
   // 获取项目数据的函数

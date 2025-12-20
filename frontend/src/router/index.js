@@ -98,6 +98,13 @@ const routes = [
         name: 'DirectorEngine',
         component: () => import('@/views/studio/DirectorEngine.vue'),
         props: true
+      },
+      {
+        path: ':projectId/chapters/:id/movie-studio',
+        name: 'MovieStudio',
+        component: () => import('@/views/studio/MovieStudio.vue'),
+        meta: { title: '电影工作室' },
+        props: true
       }
     ]
   },

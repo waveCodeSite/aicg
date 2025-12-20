@@ -8,6 +8,16 @@
         </el-icon>
       </div>
       <div class="card-title">{{ project.title }}</div>
+      <div v-if="project.type" class="type-tag">
+        <el-tag
+          :type="project.type === 'ai_movie' ? 'primary' : 'success'"
+          size="small"
+          effect="dark"
+          class="type-badge"
+        >
+          {{ project.type === 'ai_movie' ? '电影' : '解说' }}
+        </el-tag>
+      </div>
     </div>
 
     <!-- 卡片内容 -->
@@ -169,7 +179,19 @@ const getFileTypeColor = (fileType) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+}
+
+.type-tag {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.type-badge {
+  font-size: 10px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
 }
 
 .card-content {

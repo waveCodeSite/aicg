@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { projectsService, projectUtils } from '@/services/projects'
+import { chaptersService } from '@/services/chapters'
 
 export const useProjectsStore = defineStore('projects', () => {
   // 状态定义
@@ -436,6 +437,23 @@ export const useProjectsStore = defineStore('projects', () => {
   }
 
   /**
+   * 获取项目的章节列表
+   * @param {string} projectId - 项目ID
+   */
+  const fetchProjectChapters = async (projectId) => {
+    try {
+      loading.value = true
+      const response = await chaptersService.getChapters(projectId)
+      return response.chapters || []
+    } catch (err) {
+      console.error('获取章节列表失败:', err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
    * 重新处理项目（向后兼容）
    * @param {string} projectId - 项目ID
    */
@@ -485,6 +503,7 @@ export const useProjectsStore = defineStore('projects', () => {
     getProject,
     fetchProjectContent,
     fetchProjectStatus,
+    fetchProjectChapters,
     createProject,
     updateProject,
     deleteProject,

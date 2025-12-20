@@ -69,6 +69,45 @@
             </div>
           </div>
 
+          <!-- 项目类型选择 -->
+          <div class="type-selection">
+            <div class="selection-label">项目类型</div>
+            <div class="type-cards">
+              <div 
+                class="type-card" 
+                :class="{ active: formData.type === 'picture_narrative' }"
+                @click="formData.type = 'picture_narrative'"
+              >
+                <div class="type-img">
+                  <img src="@/assets/images/picture_narrative_type.png" alt="解说视频">
+                </div>
+                <div class="type-info">
+                  <div class="type-title">解说视频</div>
+                  <div class="type-desc">图文解说，快速出片</div>
+                </div>
+                <div class="active-badge">
+                  <el-icon><Check /></el-icon>
+                </div>
+              </div>
+              <div 
+                class="type-card" 
+                :class="{ active: formData.type === 'ai_movie' }"
+                @click="formData.type = 'ai_movie'"
+              >
+                <div class="type-img">
+                  <img src="@/assets/images/ai_movie_type.png" alt="AI电影">
+                </div>
+                <div class="type-info">
+                  <div class="type-title">AI 电影</div>
+                  <div class="type-desc">影视级别，角色一致</div>
+                </div>
+                <div class="active-badge">
+                  <el-icon><Check /></el-icon>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 项目信息表单 -->
           <el-form
             ref="formRef"
@@ -120,6 +159,45 @@
 
       <!-- 文本导入方式 -->
       <el-tab-pane label="导入文本" name="text">
+        <!-- 项目类型选择 -->
+        <div class="type-selection" style="margin-bottom: 20px;">
+          <div class="selection-label">项目类型</div>
+          <div class="type-cards">
+            <div 
+              class="type-card" 
+              :class="{ active: textFormData.type === 'picture_narrative' }"
+              @click="textFormData.type = 'picture_narrative'"
+            >
+              <div class="type-img">
+                <img src="@/assets/images/picture_narrative_type.png" alt="解说视频">
+              </div>
+              <div class="type-info">
+                <div class="type-title">解说视频</div>
+                <div class="type-desc">图文解说，快速出片</div>
+              </div>
+              <div class="active-badge">
+                <el-icon><Check /></el-icon>
+              </div>
+            </div>
+            <div 
+              class="type-card" 
+              :class="{ active: textFormData.type === 'ai_movie' }"
+              @click="textFormData.type = 'ai_movie'"
+            >
+              <div class="type-img">
+                <img src="@/assets/images/ai_movie_type.png" alt="AI电影">
+              </div>
+              <div class="type-info">
+                <div class="type-title">AI 电影</div>
+                <div class="type-desc">影视级别，角色一致</div>
+              </div>
+              <div class="active-badge">
+                <el-icon><Check /></el-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <el-form
           ref="textFormRef"
           :model="textFormData"
@@ -183,7 +261,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled, Document, Delete, Loading } from '@element-plus/icons-vue'
+import { UploadFilled, Document, Delete, Loading, Check, VideoCamera, Collection } from '@element-plus/icons-vue'
 import { fileService } from '@/services/upload'
 import { projectsService } from '@/services/projects'
 
@@ -217,6 +295,7 @@ const activeTab = ref('file')
 const formData = reactive({
   title: '',
   description: '',
+  type: 'picture_narrative',
   auto_process: true
 })
 
@@ -224,7 +303,8 @@ const formData = reactive({
 const textFormData = reactive({
   title: '',
   description: '',
-  content: ''
+  content: '',
+  type: 'picture_narrative'
 })
 
 // 文件上传表单验证规则
@@ -400,7 +480,8 @@ const handleSubmit = async () => {
       file_size: uploadedFileInfo.value.file_size,
       file_type: uploadedFileInfo.value.file_type,
       file_path: uploadedFileInfo.value.storage_key,
-      file_hash: uploadedFileInfo.value.file_info?.file_hash
+      file_hash: uploadedFileInfo.value.file_info?.file_hash,
+      type: formData.type
     }
 
     // 调用项目API创建项目
@@ -430,7 +511,8 @@ const handleTextSubmit = async () => {
     const textData = {
       title: textFormData.title.trim(),
       description: textFormData.description.trim(),
-      content: textFormData.content
+      content: textFormData.content,
+      type: textFormData.type
     }
 
     // 调用文本导入API创建项目
@@ -458,12 +540,14 @@ const resetForm = async () => {
   uploadedFileInfo.value = null
   formData.title = ''
   formData.description = ''
+  formData.type = 'picture_narrative'
   formData.auto_process = true
 
   // 重置文本导入表单状态
   textFormData.title = ''
   textFormData.description = ''
   textFormData.content = ''
+  textFormData.type = 'picture_narrative'
 
   // 重置选项卡
   activeTab.value = 'file'
@@ -499,6 +583,101 @@ defineExpose({
 
 .creator-tabs :deep(.el-tabs__header) {
   margin-bottom: var(--space-lg);
+}
+
+.type-selection {
+  margin-bottom: var(--space-xl);
+}
+
+.selection-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm);
+}
+
+.type-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.type-card:hover {
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.type-card.active {
+  border-color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.type-img {
+  width: 100%;
+  height: 100px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.type-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.type-card:hover .type-img img {
+  transform: scale(1.05);
+}
+
+.type-info {
+  padding: var(--space-md);
+}
+
+.type-title {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  margin-bottom: 2px;
+}
+
+.type-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.active-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transform: scale(0);
+  transition: transform var(--transition-base);
+}
+
+.type-card.active .active-badge {
+  transform: scale(1);
 }
 
 .word-count {

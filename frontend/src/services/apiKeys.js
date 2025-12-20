@@ -72,6 +72,16 @@ export const apiKeysService = {
      */
     async getAPIKeyUsage(keyId) {
         return await get(`/api-keys/${keyId}/usage`)
+    },
+
+    /**
+     * 获取API密钥支持的模型列表
+     * @param {string} keyId - 密钥ID
+     * @returns {Promise} 模型列表
+     */
+    async getAPIKeyModels(keyId, type = null) {
+        const params = type ? { type } : {}
+        return await get(`/api-keys/${keyId}/models`, { params })
     }
 }
 
