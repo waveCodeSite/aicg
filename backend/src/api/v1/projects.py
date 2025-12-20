@@ -13,7 +13,7 @@ from src.api.schemas.project import (ProjectArchiveResponse, ProjectCreate, Proj
                                      ProjectRetryResponse, ProjectStatusResponse, ProjectUpdate, ProjectFromTextCreate)
 from src.core.database import get_db
 from src.core.logging import get_logger
-from src.models.project import ProjectStatus as ModelProjectStatus
+from src.models.project import ProjectStatus as ModelProjectStatus, ProjectType as ModelProjectType
 from src.models.user import User
 from src.services.project import ProjectService
 
@@ -104,7 +104,8 @@ async def create_project(
         file_size=project_data.file_size,
         file_type=project_data.file_type,
         file_path=project_data.file_path,
-        file_hash=project_data.file_hash
+        file_hash=project_data.file_hash,
+        project_type=ModelProjectType(project_data.type) if project_data.type else ModelProjectType.PICTURE_NARRATIVE
     )
 
     # 检查项目是否可以处理
@@ -150,7 +151,8 @@ async def create_project_from_text(
         owner_id=current_user.id,
         title=project_data.title,
         content=project_data.content,
-        description=project_data.description
+        description=project_data.description,
+        project_type=ModelProjectType(project_data.type) if project_data.type else ModelProjectType.PICTURE_NARRATIVE
     )
 
     # 检查项目是否可以处理

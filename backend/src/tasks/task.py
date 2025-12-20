@@ -22,6 +22,7 @@ from src.core.logging import get_logger
 from src.services.project_processing import project_processing_service
 from src.services.prompt import prompt_service
 from src.services.image import image_service
+from src.services.script_engine import script_engine_service
 
 logger = get_logger(__name__)
 
@@ -298,6 +299,44 @@ def synthesize_video(self, video_task_id: str):
     logger.info(f"Celery任务成功: synthesize_video (video_task_id={video_task_id})")
     return result
 
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.generate_script"
+)
+def movie_generate_script(self, chapter_id: str, api_key_id: str, model: str = None):
+    logger.info(f"Celery任务开始: movie_generate_script (chapter_id={chapter_id})")
+    result = run_async_task(script_engine_service.generate_script(chapter_id, api_key_id, model))
+    logger.info(f"Celery任务完成: movie_generate_script")
+    return {"script_id": str(result.id)}
+
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.produce_shot"
+)
+def movie_produce_shot(self, shot_id: str, api_key_id: str, model: str = "veo3.1-fast"):
+    from src.services.movie_production import movie_production_service
+    logger.info(f"Celery任务开始: movie_produce_shot (shot_id={shot_id})")
+    task_id = run_async_task(movie_production_service.produce_shot_video(shot_id, api_key_id, model))
+    logger.info(f"Celery任务提交: Vector Engine Task ID = {task_id}")
+    return {"video_task_id": task_id}
+
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.extract_characters"
+)
+def movie_extract_characters(self, script_id: str, api_key_id: str, model: str = None):
+    from src.services.movie_character_service import movie_character_service
+    logger.info(f"Celery任务开始: movie_extract_characters (script_id={script_id})")
+    chars = run_async_task(movie_character_service.extract_characters_from_script(script_id, api_key_id, model))
+    logger.info(f"Celery任务完成: movie_extract_characters, extracted {len(chars)} characters")
+    return {"character_count": len(chars)}
+
 
 # ---------------------------
 # 导出的任务列表
@@ -311,5 +350,8 @@ __all__ = [
     'generate_prompts_by_ids',
     'generate_images',
     'generate_audio',
-    'synthesize_video',  # 新增
+    'synthesize_video',
+    'movie_generate_script',
+    'movie_produce_shot',
+    'movie_extract_characters',
 ]

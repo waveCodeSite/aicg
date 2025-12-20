@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import BusinessLogicError, NotFoundError
 from src.core.logging import get_logger
-from src.models.project import Project, ProjectStatus
+from src.models.project import Project, ProjectStatus, ProjectType
 from src.services.base import BaseService
 
 logger = get_logger(__name__)
@@ -69,7 +69,8 @@ class ProjectService(BaseService):
             file_size: Optional[int] = 0,
             file_type: Optional[str] = "txt",
             file_path: Optional[str] = "",
-            file_hash: Optional[str] = None
+            file_hash: Optional[str] = None,
+            project_type: ProjectType = ProjectType.PICTURE_NARRATIVE
     ) -> Project:
         """
         创建新项目
@@ -105,6 +106,7 @@ class ProjectService(BaseService):
                 file_type=file_type,
                 file_path=file_path,
                 file_hash=file_hash,
+                type=project_type,
                 status=ProjectStatus.UPLOADED
             )
 
@@ -127,7 +129,8 @@ class ProjectService(BaseService):
             owner_id: str,
             title: str,
             content: str,
-            description: Optional[str] = None
+            description: Optional[str] = None,
+            project_type: ProjectType = ProjectType.PICTURE_NARRATIVE
     ) -> Project:
         """
         从文本内容创建项目
@@ -204,7 +207,8 @@ class ProjectService(BaseService):
                     file_size=file_size,
                     file_type="txt",
                     file_path=result["object_key"],
-                    file_hash=file_hash
+                    file_hash=file_hash,
+                    project_type=project_type
                 )
 
                 logger.info(

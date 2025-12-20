@@ -24,6 +24,12 @@ class ProjectStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class ProjectType(str, Enum):
+    """项目类型枚举"""
+    PICTURE_NARRATIVE = "picture_narrative"  # 图解说/视频解说
+    AI_MOVIE = "ai_movie"                    # AI电影
+
+
 class Project(BaseModel):
     """项目模型 - 按照data-model.md规范实现"""
     __tablename__ = 'projects'
@@ -32,6 +38,7 @@ class Project(BaseModel):
     owner_id = Column(PostgreSQLUUID(as_uuid=True), nullable=False, index=True, comment="外键索引，无约束")  # 外键索引，无约束
     title = Column(String(200), nullable=False, comment="项目标题")
     description = Column(Text, nullable=True, comment="项目描述")
+    type = Column(String(20), default=ProjectType.PICTURE_NARRATIVE, index=True, comment="项目类型")
 
     # 文件信息 - 按照data-model.md规范
     file_name = Column(String(255), nullable=False, comment="文件名称")
@@ -124,7 +131,8 @@ class Project(BaseModel):
     async def create_project(cls, db_session, owner_id: str, title: str,
                              description: str = None, file_name: str = None,
                              file_size: int = 0, file_type: str = "txt",
-                             file_path: str = "", file_hash: str = None):
+                             file_path: str = "", file_hash: str = None,
+                             project_type: ProjectType = ProjectType.PICTURE_NARRATIVE):
         """创建新项目 - 按照data-model.md规范"""
         project = cls(
             owner_id=owner_id,
@@ -135,6 +143,7 @@ class Project(BaseModel):
             file_type=file_type,
             file_path=file_path,
             file_hash=file_hash,
+            type=project_type,
             status=ProjectStatus.UPLOADED
         )
         db_session.add(project)
@@ -147,4 +156,5 @@ class Project(BaseModel):
 __all__ = [
     "Project",
     "ProjectStatus",
+    "ProjectType",
 ]

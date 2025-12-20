@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.models.project import ProjectStatus
+from src.models.project import ProjectStatus, ProjectType
 from .base import PaginatedResponse, UUIDMixin
 
 
@@ -20,6 +20,7 @@ class ProjectCreate(BaseModel):
     file_type: Optional[str] = Field(None, pattern="^(txt|md|docx|epub)$", description="文件类型")
     file_path: Optional[str] = Field(None, max_length=500, description="MinIO存储路径")
     file_hash: Optional[str] = Field(None, max_length=64, description="文件MD5哈希")
+    type: ProjectType = Field(ProjectType.PICTURE_NARRATIVE, description="项目类型")
 
     model_config = {
         "json_schema_extra": {
@@ -41,6 +42,7 @@ class ProjectFromTextCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200, description="项目标题")
     description: Optional[str] = Field(None, max_length=1000, description="项目描述")
     content: str = Field(..., min_length=100, max_length=500000, description="文本内容")
+    type: ProjectType = Field(ProjectType.PICTURE_NARRATIVE, description="项目类型")
 
     model_config = {
         "json_schema_extra": {
@@ -84,6 +86,7 @@ class ProjectResponse(UUIDMixin):
     chapter_count: int = Field(0, description="章节数")
     paragraph_count: int = Field(0, description="段落数")
     sentence_count: int = Field(0, description="句子数")
+    type: ProjectType = Field(ProjectType.PICTURE_NARRATIVE, description="项目类型")
     status: str = Field(..., description="项目状态")
     processing_progress: int = Field(0, description="处理进度（百分比）")
     error_message: Optional[str] = Field(None, description="错误信息")
