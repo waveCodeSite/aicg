@@ -47,24 +47,51 @@
                     </el-button>
                   </div>
                   
-                  <!-- 首帧图 -->
+                  <!-- 首尾帧图 -->
                   <template v-else>
-                    <el-image :src="shot.first_frame_url" fit="cover" class="shot-preview">
-                      <template #placeholder>
-                        <div class="image-placeholder">
-                          <el-icon><Picture /></el-icon>
-                          <span>{{ shot.status === 'processing' ? '视频生成中...' : '等待生成首帧' }}</span>
-                        </div>
-                      </template>
-                    </el-image>
+                    <div class="dual-keyframes">
+                      <div class="keyframe-item">
+                        <el-image :src="shot.first_frame_url" fit="cover" class="shot-preview">
+                          <template #placeholder>
+                            <div class="image-placeholder small">
+                              <el-icon><Picture /></el-icon>
+                              <span class="placeholder-text">START</span>
+                            </div>
+                          </template>
+                        </el-image>
+                        <div class="frame-tag">START</div>
+                      </div>
+                      <div class="keyframe-item">
+                        <el-image :src="shot.last_frame_url" fit="cover" class="shot-preview">
+                          <template #placeholder>
+                            <div class="image-placeholder small">
+                              <el-icon><Picture /></el-icon>
+                              <span class="placeholder-text">END</span>
+                            </div>
+                          </template>
+                        </el-image>
+                        <div class="frame-tag">END</div>
+                      </div>
+                    </div>
+                    
+                    <div v-if="shot.status === 'failed' && shot.last_error" class="error-overlay">
+                       <el-alert :title="shot.last_error" type="error" :closable="false" show-icon />
+                    </div>
+
                     <div class="shot-actions">
-                      <el-tooltip v-if="!shot.first_frame_url" content="请先生成首帧图">
-                        <el-button circle icon="VideoPlay" type="info" disabled></el-button>
-                      </el-tooltip>
-                      <el-tooltip v-else-if="!canProduceShot(shot)" content="部分角色形象缺失，请先生成">
-                         <el-button circle icon="VideoPlay" type="info" disabled></el-button>
-                      </el-tooltip>
-                      <el-button v-else circle icon="VideoPlay" type="primary" @click="handleProduceShot(shot)" :loading="shot.status === 'processing'"></el-button>
+                      <div v-if="shot.status === 'processing'" class="processing-status">
+                         <el-icon class="is-loading"><Loading /></el-icon>
+                         <span>生产中...</span>
+                      </div>
+                      <template v-else>
+                        <el-tooltip v-if="!shot.first_frame_url" content="请先生成首帧图">
+                          <el-button circle icon="VideoPlay" type="info" disabled></el-button>
+                        </el-tooltip>
+                        <el-tooltip v-else-if="!canProduceShot(shot)" content="部分角色形象缺失，请先生成">
+                           <el-button circle icon="VideoPlay" type="info" disabled></el-button>
+                        </el-tooltip>
+                        <el-button v-else circle icon="VideoPlay" type="primary" @click="handleProduceShot(shot)"></el-button>
+                      </template>
                     </div>
                   </template>
                 </div>
@@ -75,7 +102,8 @@
                         <el-button link><el-icon><MoreFilled /></el-icon></el-button>
                         <template #dropdown>
                           <el-dropdown-menu>
-                            <el-dropdown-item command="regenerate-keyframe">重新生成首帧</el-dropdown-item>
+                            <el-dropdown-item command="regenerate-keyframe">生成/重绘首帧</el-dropdown-item>
+                            <el-dropdown-item command="regenerate-last-frame">生成/重绘尾帧</el-dropdown-item>
                             <el-dropdown-item v-if="shot.video_url" command="regenerate-video">重新生成视频</el-dropdown-item>
                             <el-dropdown-item v-if="shot.video_url && !showVideo[shot.id]" command="switch-video">切换到视频</el-dropdown-item>
                           </el-dropdown-menu>
@@ -234,7 +262,7 @@ const selectedShotId = ref(null)
 
 // 视图切换控制
 const showVideo = ref({}) // {shotId: boolean}
-const activePollers = ref({}) // {shotId: timerId}
+const autoRefreshTimer = ref(null)
 
 const genConfig = ref({
   api_key_id: '',
@@ -273,13 +301,27 @@ const fetchModels = async () => {
   
   loadingModels.value = true
   try {
-    // 根据模式确定模型类型
-    const modelType = (dialogMode.value === 'avatar' || dialogMode.value === 'keyframes') ? 'image' : 'text'
-    console.log(`Loading models for ${dialogMode.value} (type: ${modelType})`)
+    // 确定模型类型
+    let modelType = 'text'
+    const imageModes = ['avatar', 'keyframes', 'regen-keyframe', 'regen-last-frame']
+    const videoModes = ['produce-single', 'produce-batch', 'regen-video']
     
+    if (imageModes.includes(dialogMode.value)) {
+      modelType = 'image'
+    } else if (videoModes.includes(dialogMode.value)) {
+      modelType = 'video'
+    }
+
+    console.log(`Loading models for mode: ${dialogMode.value}, types: ${modelType}`)
     const models = await apiKeysService.getAPIKeyModels(newKeyId, modelType)
     modelOptions.value = models || []
     
+    // 如果没有模型，尝试获取 'text' 类型作为兜底 (针对某些全能 KEY)
+    if (modelOptions.value.length === 0 && modelType !== 'text') {
+        const fallbackModels = await apiKeysService.getAPIKeyModels(newKeyId, 'text')
+        modelOptions.value = fallbackModels || []
+    }
+
     // 如果当前模型不在列表中，选择第一个可用的
     if (modelOptions.value.length > 0 && !modelOptions.value.includes(genConfig.value.model)) {
       genConfig.value.model = modelOptions.value[0]
@@ -319,8 +361,8 @@ watch(() => genConfig.value.api_key_id, fetchModels)
 // 监听对话框模式变化，动态切换模型列表类型
 watch(() => dialogMode.value, fetchModels)
 
-const loadData = async () => {
-  loading.value = true
+const loadData = async (isAutoRefresh = false) => {
+  if (!isAutoRefresh) loading.value = true
   try {
     const chapterData = await api.get(`/chapters/${chapterId}`)
     chapter.value = chapterData
@@ -328,9 +370,14 @@ const loadData = async () => {
     const scriptData = await movieService.getScript(chapterId).catch(() => null)
     script.value = scriptData
 
-    const keys = await apiKeysService.getAPIKeys()
-    apiKeys.value = keys.api_keys || []
-    if (apiKeys.value.length > 0) genConfig.value.api_key_id = apiKeys.value[0].id
+    // 更新任务同步状态
+    checkNeedsRefresh()
+
+    if (!isAutoRefresh) {
+        const keys = await apiKeysService.getAPIKeys()
+        apiKeys.value = keys.api_keys || []
+        if (apiKeys.value.length > 0) genConfig.value.api_key_id = apiKeys.value[0].id
+    }
 
     if (chapter.value?.project_id) {
        characters.value = await movieService.getCharacters(chapter.value.project_id)
@@ -338,9 +385,33 @@ const loadData = async () => {
   } catch (err) {
     console.error(err)
   } finally {
-    loading.value = false
+    if (!isAutoRefresh) loading.value = false
   }
 }
+
+// 检查是否有任务正在处理，如果是则启动全局定时同步
+const checkNeedsRefresh = () => {
+    const hasProcessing = script.value?.scenes.some(s => 
+        s.shots.some(shot => shot.status === 'processing' || !shot.first_frame_url)
+    )
+    
+    if (hasProcessing) {
+        if (!autoRefreshTimer.value) {
+            console.log('Detected processing tasks, starting global auto-refresh...')
+            autoRefreshTimer.value = setInterval(() => loadData(true), 15000)
+        }
+    } else {
+        if (autoRefreshTimer.value) {
+            console.log('No processing tasks, stopping auto-refresh.')
+            clearInterval(autoRefreshTimer.value)
+            autoRefreshTimer.value = null
+        }
+    }
+}
+
+onUnmounted(() => {
+    if (autoRefreshTimer.value) clearInterval(autoRefreshTimer.value)
+})
 
 const handleGenerateScript = () => {
   dialogMode.value = 'script'
@@ -366,6 +437,8 @@ const handleDialogConfirm = () => {
     confirmProduceBatch()
   } else if (dialogMode.value === 'regen-keyframe') {
     confirmRegenKeyframe()
+  } else if (dialogMode.value === 'regen-last-frame') {
+    confirmRegenLastFrame()
   } else if (dialogMode.value === 'regen-video') {
     confirmRegenVideo()
   } else {
@@ -394,6 +467,27 @@ const confirmRegenKeyframe = async () => {
     }
 }
 
+const confirmRegenLastFrame = async () => {
+    if (!genConfig.value.api_key_id) {
+        ElMessage.warning('请选择 API Key')
+        return
+    }
+    const shotId = selectedShotId.value
+    if (!shotId) return
+
+    showGenerateDialog.value = false
+    try {
+        await movieService.regenerateLastFrame(shotId, { 
+            api_key_id: genConfig.value.api_key_id,
+            model: genConfig.value.model
+        })
+        ElMessage.success('尾帧重制任务已提交')
+        loadData() 
+    } catch (err) {
+        ElMessage.error('重制失败')
+    }
+}
+
 const confirmRegenVideo = async () => {
     if (!genConfig.value.api_key_id) {
         ElMessage.warning('请选择 API Key')
@@ -409,7 +503,7 @@ const confirmRegenVideo = async () => {
             model: genConfig.value.model
         })
         ElMessage.success('视频重制任务已提交')
-        pollShotVideo(shotId)
+        loadData()
     } catch (err) {
         ElMessage.error('重制失败')
     }
@@ -426,10 +520,11 @@ const confirmProduceSingle = async () => {
     showGenerateDialog.value = false
     try {
         await movieService.produceShot(shotId, { 
-            api_key_id: genConfig.value.api_key_id 
+            api_key_id: genConfig.value.api_key_id,
+            model: genConfig.value.model
         })
         ElMessage.success('视频生产任务已提交')
-        pollShotVideo(shotId)
+        loadData()
     } catch (err) {
         ElMessage.error('视频生产失败')
     }
@@ -462,7 +557,8 @@ const getDialogTitle = () => {
   if (dialogMode.value === 'keyframes') return '首帧批量生成'
   if (dialogMode.value === 'produce-single') return '生成分镜视频'
   if (dialogMode.value === 'produce-batch') return '批量生成视频'
-  if (dialogMode.value === 'regen-keyframe') return '重新生成首帧'
+  if (dialogMode.value === 'regen-keyframe') return '生成/重置首帧'
+  if (dialogMode.value === 'regen-last-frame') return '生成/重置尾帧'
   if (dialogMode.value === 'regen-video') return '重新生成视频'
   return '角色形象生成'
 }
@@ -673,6 +769,8 @@ const toggleShotView = (shotId, visible) => {
 const handleShotCommand = async (command, shot) => {
   if (command === 'regenerate-keyframe') {
     handleRegenerateKeyframe(shot)
+  } else if (command === 'regenerate-last-frame') {
+    handleRegenerateLastFrame(shot)
   } else if (command === 'regenerate-video') {
     handleRegenerateVideo(shot)
   } else if (command === 'switch-video') {
@@ -686,49 +784,22 @@ const handleRegenerateKeyframe = (shot) => {
   showGenerateDialog.value = true
 }
 
+const handleRegenerateLastFrame = (shot) => {
+  selectedShotId.value = shot.id
+  dialogMode.value = 'regen-last-frame'
+  showGenerateDialog.value = true
+}
+
 const handleRegenerateVideo = (shot) => {
   selectedShotId.value = shot.id
   dialogMode.value = 'regen-video'
   showGenerateDialog.value = true
 }
 
-// --- 轮询逻辑 ---
-const pollShotVideo = async (shotId) => {
-  if (activePollers.value[shotId]) return
-
-  const timer = setInterval(async () => {
-    try {
-      const { status } = await movieService.getShotStatus(shotId, { 
-        api_key_id: genConfig.value.api_key_id 
-      })
-      
-      if (status === 'completed' || status === 'failed') {
-        clearInterval(timer)
-        delete activePollers.value[shotId]
-        if (status === 'completed') {
-          ElMessage.success('分镜视频生成完成')
-          showVideo.value[shotId] = true
-        } else {
-          ElMessage.error('分镜视频生成失败')
-        }
-        loadData()
-      }
-    } catch (err) {
-      clearInterval(timer)
-      delete activePollers.value[shotId]
-    }
-  }, 10000)
-
-  activePollers.value[shotId] = timer
-}
-
 watch(() => script.value, (newScript) => {
   if (!newScript) return
   newScript.scenes.forEach(scene => {
     scene.shots.forEach(shot => {
-      if (shot.status === 'processing' && !activePollers.value[shot.id]) {
-        pollShotVideo(shot.id)
-      }
       if (shot.video_url && showVideo.value[shot.id] === undefined) {
          showVideo.value[shot.id] = true
       }
@@ -827,20 +898,65 @@ onMounted(loadData)
   background: #000;
 }
 
+.dual-keyframes {
+  display: flex;
+  height: 100%;
+  gap: 2px;
+}
+
+.keyframe-item {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
 .shot-preview {
   width: 100%;
   height: 100%;
-  opacity: 0.8;
+  object-fit: cover;
 }
 
-.image-placeholder {
+.frame-tag {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.image-placeholder.small {
+  font-size: 12px;
+  color: #909399;
+}
+
+.placeholder-text {
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  padding: 5px;
+}
+
+.processing-status {
+  background: rgba(255,255,255,0.9);
+  padding: 8px 15px;
+  border-radius: 20px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #606266;
-  background: #f2f6fc;
+  gap: 8px;
+  font-size: 13px;
+  color: #409eff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
 .shot-actions {
@@ -848,11 +964,19 @@ onMounted(loadData)
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  display: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.shot-actions > * {
+  pointer-events: auto;
 }
 
 .shot-visual:hover .shot-actions {
-  display: block;
+  display: flex;
 }
 
 .shot-info {

@@ -37,9 +37,9 @@ class MovieProductionService(SessionManagedService):
             logger.error(f"Failed to convert image to base64: {e}")
             return image_url # 兜底返回原 URL
 
-    async def _polish_prompt_to_english(self, api_key_id: str, owner_id: str, visual_desc: str, camera_movement: Optional[str] = None, performance_prompt: Optional[str] = None) -> str:
+    async def _polish_prompt_to_english(self, api_key_id: str, owner_id: str, visual_desc: str, camera_movement: Optional[str] = None, performance_prompt: Optional[str] = None, dialogue: Optional[str] = None) -> str:
         """
-        将中文描述转换为高质量的英文视频提示词
+        将中文描述转换为高质量的英文视频提示词，并附加字幕指令
         """
         api_key_service = APIKeyService(self.db_session)
         api_key = await api_key_service.get_api_key_by_id(api_key_id, owner_id)
@@ -50,8 +50,13 @@ class MovieProductionService(SessionManagedService):
             base_url=api_key.base_url
         )
 
-        system_prompt = "You are a professional AI video prompt engineer. Translate and polish the given scene description into a high-quality, detailed English prompt for video generation. Avoid outputting anything other than the prompt itself."
-        user_content = f"Visual Description: {visual_desc}\nCamera Movement: {camera_movement or 'None'}\nPerformance/Action: {performance_prompt or 'None'}"
+        system_prompt = (
+            "You are a professional AI video prompt engineer. Translate and polish the given scene description into a high-quality, detailed English prompt for video generation.\n"
+            "CRITICAL: If 'Dialogue' is provided, you MUST append a specific instruction at the end of the prompt to render bilingual subtitles at the bottom of the video.\n"
+            "The subtitle format should be: '[Chinese Dialogue] / [English Translation]'.\n"
+            "Avoid outputting anything other than the prompt itself."
+        )
+        user_content = f"Visual Description: {visual_desc}\nCamera Movement: {camera_movement or 'None'}\nPerformance/Action: {performance_prompt or 'None'}\nDialogue: {dialogue or 'None'}"
         
         try:
             response = await llm_provider.completions(
@@ -61,10 +66,15 @@ class MovieProductionService(SessionManagedService):
                     {"role": "user", "content": user_content},
                 ]
             )
-            return response.choices[0].message.content.strip()
+            polished_prompt = response.choices[0].message.content.strip()
+            
+            # 确保字幕指令存在（如果 LLM 没生成，手动兜底）
+            if dialogue and "subtitles" not in polished_prompt.lower():
+                polished_prompt += f" Display bilingual subtitles at the bottom: '{dialogue} / [Translation]'"
+                
+            return polished_prompt
         except Exception as e:
             logger.error(f"Prompt polishing failed: {e}")
-            # 回退：简单合并（虽然非英文效果较差，但保证流程通畅）
             return f"{visual_desc}. {camera_movement or ''}. {performance_prompt or ''}"
 
     async def produce_shot_video(self, shot_id: str, api_key_id: str, model: str = "veo_3_1-fast", force: bool = False) -> str:
@@ -130,7 +140,8 @@ class MovieProductionService(SessionManagedService):
                 api_key_id, owner_id, 
                 shot.visual_description, 
                 shot.camera_movement, 
-                shot.performance_prompt
+                shot.performance_prompt,
+                shot.dialogue
             )
             shot.video_prompt = final_english_prompt
 
@@ -144,8 +155,10 @@ class MovieProductionService(SessionManagedService):
                 base_url=api_key.base_url
             )
 
-            # 预签名图片 URL
+            # 预签名图片 URL (首帧 + 尾帧 + 角色参考)
             all_raw_images = [shot.first_frame_url]
+            if shot.last_frame_url:
+                all_raw_images.append(shot.last_frame_url)
             all_raw_images.extend(ref_images)
             
             logger.info(f"准备提交视频生成: shot_id={shot_id}, refs={len(ref_images)}")
@@ -163,6 +176,7 @@ class MovieProductionService(SessionManagedService):
 
             try:
                 shot.status = "processing"
+                shot.api_key_id = api_key_id
                 await self.db_session.flush()
 
                 logger.info(f"正在调用 Vector Provider: model={model}, images={len(all_base64_images)}")
@@ -234,6 +248,40 @@ class MovieProductionService(SessionManagedService):
                 "message": f"批量生产已启动: 成功 {success}, 失败 {failed}"
             }
 
+    async def sync_all_video_tasks(self) -> dict:
+        """
+        [Celery Beat 调用] 定时同步所有处理中的视频任务状态
+        """
+        async with self:
+            from sqlalchemy import select
+            stmt = select(MovieShot).where(MovieShot.status == 'processing', MovieShot.video_task_id != None)
+            processing_shots = (await self.db_session.execute(stmt)).scalars().all()
+            
+            if not processing_shots:
+                return {"count": 0}
+            
+            logger.info(f"开始定时同步视频状态: 发现 {len(processing_shots)} 个处理中的分镜")
+            
+            # 使用信号量控制并发
+            semaphore = asyncio.Semaphore(5)
+            
+            async def sync_one(shot: MovieShot):
+                async with semaphore:
+                    try:
+                        # 如果没有保存 api_key_id，则尝试寻找兜底 Key (旧数据兼容)
+                        api_key_id = shot.api_key_id
+                        if not api_key_id:
+                             # 尝试获取项目的第一个 Key 或默认 Key (这里简化处理)
+                             logger.warning(f"分镜 {shot.id} 缺少 api_key_id，跳过状态同步")
+                             return
+                        
+                        await self.poll_shot_status(str(shot.id), api_key_id)
+                    except Exception as e:
+                        logger.error(f"同步分镜 {shot.id} 状态失败: {e}")
+
+            await asyncio.gather(*[sync_one(s) for s in processing_shots])
+            return {"count": len(processing_shots)}
+
     async def poll_shot_status(self, shot_id: str, api_key_id: str) -> str:
         """
         轮询并更新镜头状态
@@ -262,19 +310,30 @@ class MovieProductionService(SessionManagedService):
                 base_url=api_key.base_url
             )
             
-            status_resp = await vector_provider.get_task_status(shot.video_task_id) # type: ignore
-            status = status_resp.get("status") # pending, processing, completed, failed
-            
-            if status == "completed":
-                content_resp = await vector_provider.get_video_content(shot.video_task_id) # type: ignore
-                shot.video_url = content_resp.get("video_url")
-                shot.status = "completed"
-                await self.db_session.commit()
-            elif status == "failed":
-                shot.status = "failed"
-                await self.db_session.commit()
-            
-            return status # type: ignore
+            try:
+                status_resp = await vector_provider.get_task_status(shot.video_task_id) # type: ignore
+                status = status_resp.get("status") # pending, processing, completed, failed
+                
+                if status == "completed":
+                    content_resp = await vector_provider.get_video_content(shot.video_task_id) # type: ignore
+                    shot.video_url = content_resp.get("video_url")
+                    shot.status = "completed"
+                    shot.last_error = None
+                    await self.db_session.commit()
+                elif status == "failed":
+                    shot.status = "failed"
+                    shot.last_error = status_resp.get("error") or "Vector Engine 任务失败"
+                    await self.db_session.commit()
+                
+                return status # type: ignore
+            except Exception as e:
+                logger.error(f"轮询 Vector Engine 异常 [shot_id={shot_id}]: {e}")
+                # 记录错误但不一定修改状态为 failed (除非是明确的任务不存在)
+                if "not found" in str(e).lower():
+                    shot.status = "failed"
+                    shot.last_error = "任务不存在"
+                    await self.db_session.commit()
+                raise
 
 movie_production_service = MovieProductionService()
 __all__ = ["MovieProductionService", "movie_production_service"]

@@ -153,20 +153,6 @@ async def batch_produce_videos(
     task = movie_batch_produce_shots.delay(script_id, req.api_key_id, req.model)
     return {"task_id": task.id, "message": "批量视频生产任务已提交"}
 
-@router.get("/shots/{shot_id}/status", summary="查询单个镜头的视频生产状态")
-async def get_shot_status(
-    shot_id: str,
-    api_key_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_required)
-):
-    """
-    轮询单个分镜的视频状态并触发后端同步
-    """
-    from src.services.movie_production import movie_production_service
-    status = await movie_production_service.poll_shot_status(shot_id, api_key_id)
-    return {"status": status}
-
 @router.post("/shots/{shot_id}/regenerate-keyframe", summary="重新生成单个分镜首帧")
 async def regenerate_keyframe(
     shot_id: str,
@@ -180,6 +166,20 @@ async def regenerate_keyframe(
     from src.tasks.task import movie_regenerate_keyframe
     task = movie_regenerate_keyframe.delay(shot_id, req.api_key_id, req.model)
     return {"task_id": task.id, "message": "首帧重制任务已提交"}
+
+@router.post("/shots/{shot_id}/regenerate-last-frame", summary="重新生成单个分镜尾帧")
+async def regenerate_last_frame(
+    shot_id: str,
+    req: KeyframeGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_required)
+):
+    """
+    强制重新生成某个分镜的尾帧 (异步)
+    """
+    from src.tasks.task import movie_regenerate_last_frame
+    task = movie_regenerate_last_frame.delay(shot_id, req.api_key_id, req.model)
+    return {"task_id": task.id, "message": "尾帧重制任务已提交"}
 
 @router.post("/shots/{shot_id}/regenerate-video", summary="重新生成单个分镜视频")
 async def regenerate_video(

@@ -50,6 +50,12 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     result_expires=3600,
+    beat_schedule={
+        "sync-video-status-every-30s": {
+            "task": "src.tasks.task.sync_all_video_task_status",
+            "schedule": 30.0,
+        },
+    }
 )
 
 
@@ -390,6 +396,29 @@ def movie_regenerate_keyframe(self, shot_id: str, api_key_id: str, model: str = 
     return {"first_frame_url": url}
 
 
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.regenerate_last_frame"
+)
+def movie_regenerate_last_frame(self, shot_id: str, api_key_id: str, model: str = None):
+    from src.services.visual_identity_service import visual_identity_service
+    logger.info(f"Celery任务开始: movie_regenerate_last_frame (shot_id={shot_id})")
+    url = run_async_task(visual_identity_service.generate_shot_last_frame(shot_id, api_key_id, model))
+    logger.info(f"Celery任务完成: movie_regenerate_last_frame")
+    return {"last_frame_url": url}
+
+@celery_app.task(name="sync_all_video_task_status")
+def sync_all_video_task_status():
+    """
+    [Periodic Task] 同步所有处理中的视频任务
+    """
+    from src.services.movie_production import movie_production_service
+    logger.info("Celery定时任务开始: sync_all_video_task_status")
+    result = run_async_task(movie_production_service.sync_all_video_tasks())
+    return result
+
 # ---------------------------
 # 导出的任务列表
 # ---------------------------
@@ -410,4 +439,6 @@ __all__ = [
     'movie_generate_keyframes',
     'movie_batch_produce_shots',
     'movie_regenerate_keyframe',
+    'movie_regenerate_last_frame',
+    'sync_all_video_task_status',
 ]

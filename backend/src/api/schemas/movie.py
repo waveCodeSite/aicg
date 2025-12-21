@@ -20,14 +20,17 @@ class MovieShotBase(BaseModel):
     dialogue: Optional[str] = None
     performance_prompt: Optional[str] = None
     first_frame_url: Optional[str] = None
+    last_frame_url: Optional[str] = None
     video_url: Optional[str] = None
     video_prompt: Optional[str] = None
+    api_key_id: Optional[str] = None
     status: Optional[str] = "pending"
+    last_error: Optional[str] = None
     
     class Config:
         from_attributes = True
     
-    @field_validator("first_frame_url", "video_url", mode="after")
+    @field_validator("first_frame_url", "last_frame_url", "video_url", mode="after")
     @classmethod
     def sign_urls(cls, v: Optional[str]) -> Optional[str]:
         if v and not v.startswith("http"):

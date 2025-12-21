@@ -62,10 +62,13 @@ class MovieShot(BaseModel):
     
     # 生成资源
     first_frame_url = Column(String(500), comment="分镜首帧图URL")
+    last_frame_url = Column(String(500), comment="分镜尾帧图URL")
     video_url = Column(String(500), comment="生成的视频URL")
     video_prompt = Column(Text, comment="用于生成视频的最终提示词（包含一致性特征）")
     video_task_id = Column(String(100), comment="Vector Engine 任务ID")
+    api_key_id = Column(String(50), comment="使用的 API Key ID")
     status = Column(String(20), default="pending", index=True, comment="镜头生产状态")
+    last_error = Column(Text, comment="最后一次生产错误信息")
     
     # 关系
     scene = relationship("MovieScene", back_populates="shots")

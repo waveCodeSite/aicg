@@ -58,17 +58,17 @@ export const movieService = {
     },
 
     /**
-     * 查询分镜视频生成状态
-     */
-    getShotStatus(shotId, data) {
-        return get(`/movie/shots/${shotId}/status`, data)
-    },
-
-    /**
      * 重新生成单个分镜首帧
      */
     regenerateKeyframe(shotId, data) {
         return post(`/movie/shots/${shotId}/regenerate-keyframe`, data)
+    },
+
+    /**
+     * 重新生成单个分镜尾帧
+     */
+    regenerateLastFrame(shotId, data) {
+        return post(`/movie/shots/${shotId}/regenerate-last-frame`, data)
     },
 
     /**

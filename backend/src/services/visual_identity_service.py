@@ -92,7 +92,19 @@ class VisualIdentityService(SessionManagedService):
 
     async def generate_shot_first_frame(self, shot_id: str, api_key_id: str, model: Optional[str] = None) -> str:
         """
-        为分镜生成首帧图（单机入口，管理自己的 Session）
+        为分镜生成首帧图
+        """
+        return await self._generate_shot_any_frame(shot_id, api_key_id, "first", model)
+
+    async def generate_shot_last_frame(self, shot_id: str, api_key_id: str, model: Optional[str] = None) -> str:
+        """
+        为分镜生成尾帧图
+        """
+        return await self._generate_shot_any_frame(shot_id, api_key_id, "last", model)
+
+    async def _generate_shot_any_frame(self, shot_id: str, api_key_id: str, frame_type: str = "first", model: Optional[str] = None) -> str:
+        """
+        通用单帧生成逻辑
         """
         async with self:
             shot = await self.db_session.get(MovieShot, shot_id, options=[
@@ -103,26 +115,24 @@ class VisualIdentityService(SessionManagedService):
             ])
             if not shot: raise ValueError("未找到分镜")
             
-            # 1. 加载项目角色用于一致性
             project_id = shot.scene.script.chapter.project_id
             user_id = shot.scene.script.chapter.project.owner_id
             stmt = select(MovieCharacter).where(MovieCharacter.project_id == project_id)
             chars = (await self.db_session.execute(stmt)).scalars().all()
             
-            url = await self._generate_shot_first_frame_impl(shot, chars, user_id, api_key_id, model)
+            url = await self._generate_shot_frame_impl(shot, chars, user_id, api_key_id, frame_type, model)
             if url:
                 await self.db_session.commit()
             return url
 
-    async def _generate_shot_first_frame_impl(self, shot: MovieShot, chars: List[MovieCharacter], user_id: Any, api_key_id: str, model: Optional[str] = None) -> str:
+    async def _generate_shot_frame_impl(self, shot: MovieShot, chars: List[MovieCharacter], user_id: Any, api_key_id: str, frame_type: str = "first", model: Optional[str] = None) -> str:
         """
-        内部实现逻辑：不管理 Session，由外部控制 commit()
+        核心生成实现
         """
-        # 2. 构建 Prompt
-        # 基础描述
-        base_prompt = f"{shot.visual_description}. {shot.camera_movement or ''}"
+        # 2. 构建 Prompt (根据首尾帧调整微小差异，确保画面连贯但有动感)
+        variation = "Start of action" if frame_type == "first" else "End of action, slight variation from start"
+        base_prompt = f"{shot.visual_description}. {shot.camera_movement or ''}. {variation}."
         
-        # 寻找提及的角色并注入特征
         character_context = ""
         for char in chars:
             if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
@@ -130,7 +140,6 @@ class VisualIdentityService(SessionManagedService):
 
         final_prompt = f"{base_prompt}. {character_context}. Cinematic movie still, 8k, highly detailed."
         
-        # 3. 获取 API Key & Provider
         api_key_service = APIKeyService(self.db_session)
         api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
         
@@ -141,8 +150,7 @@ class VisualIdentityService(SessionManagedService):
         )
 
         try:
-            # 4. 生成图像
-            logger.info(f"生成分镜 {shot.id} 首帧, Prompt: {final_prompt}")
+            logger.info(f"生成分镜 {shot.id} {frame_type} 帧, Prompt: {final_prompt}")
             result = await retry_with_backoff(
                 lambda: img_provider.generate_image(
                     prompt=final_prompt,
@@ -153,7 +161,6 @@ class VisualIdentityService(SessionManagedService):
             image_data = result.data[0]
             image_url = image_data.url
             
-            # 5. 下载并上传 MinIO
             async with aiohttp.ClientSession() as http_session:
                 async with http_session.get(image_url) as resp:
                     if resp.status != 200:
@@ -163,24 +170,27 @@ class VisualIdentityService(SessionManagedService):
             storage_client = await get_storage_client()
             file_id = str(uuid.uuid4())
             upload_file = UploadFile(
-                filename=f"{file_id}.jpg",
+                filename=f"{file_id}_{frame_type}.jpg",
                 file=io.BytesIO(content),
             )
             
             storage_result = await storage_client.upload_file(
                 user_id=str(user_id),
                 file=upload_file,
-                metadata={"shot_id": str(shot.id)}
+                metadata={"shot_id": str(shot.id), "frame_type": frame_type}
             )
             object_key = storage_result["object_key"]
 
-            # 6. 更新数据库 (不在此处 commit，由异步上下文管理或主流程统一 commit)
-            shot.first_frame_url = object_key
-            logger.info(f"首帧生成并存储完成: shot_id={shot.id}, key={object_key}")
+            if frame_type == "first":
+                shot.first_frame_url = object_key
+            else:
+                shot.last_frame_url = object_key
+                
+            logger.info(f"{frame_type} 帧生成并存储完成: shot_id={shot.id}, key={object_key}")
             return object_key
             
         except Exception as e:
-            logger.error(f"生成分镜首帧失败 [shot_id={shot.id}]: {e}")
+            logger.error(f"生成分镜 {frame_type} 帧失败 [shot_id={shot.id}]: {e}")
             raise
 
     async def regenerate_shot_keyframe(self, shot_id: str, api_key_id: str, model: Optional[str] = None) -> str:
@@ -231,7 +241,7 @@ class VisualIdentityService(SessionManagedService):
                 async with semaphore:
                     try:
                         # 传入已经加载好的对象和数据，共用 self.db_session
-                        await self._generate_shot_first_frame_impl(shot_obj, chars, user_id, api_key_id, model)
+                        await self._generate_shot_frame_impl(shot_obj, chars, user_id, api_key_id, "first", model)
                         return (True, None)
                     except Exception as e:
                         return (False, str(e))
