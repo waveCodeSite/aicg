@@ -51,9 +51,9 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     result_expires=3600,
     beat_schedule={
-        "sync-video-status-every-30s": {
-            "task": "src.tasks.task.sync_all_video_task_status",
-            "schedule": 30.0,
+        "sync-video-status-every-60s": {
+            "task": "movie.sync_all_video_task_status",
+            "schedule": 60.0,
         },
     }
 )
@@ -409,7 +409,7 @@ def movie_regenerate_last_frame(self, shot_id: str, api_key_id: str, model: str 
     logger.info(f"Celery任务完成: movie_regenerate_last_frame")
     return {"last_frame_url": url}
 
-@celery_app.task(name="sync_all_video_task_status")
+@celery_app.task(name="movie.sync_all_video_task_status")
 def sync_all_video_task_status():
     """
     [Periodic Task] 同步所有处理中的视频任务

@@ -253,7 +253,7 @@ class MovieProductionService(SessionManagedService):
         [Celery Beat 调用] 定时同步所有处理中的视频任务状态
         """
         async with self:
-            from sqlalchemy import select
+            
             stmt = select(MovieShot).where(MovieShot.status == 'processing', MovieShot.video_task_id != None)
             processing_shots = (await self.db_session.execute(stmt)).scalars().all()
             
@@ -262,78 +262,97 @@ class MovieProductionService(SessionManagedService):
             
             logger.info(f"开始定时同步视频状态: 发现 {len(processing_shots)} 个处理中的分镜")
             
-            # 使用信号量控制并发
-            semaphore = asyncio.Semaphore(5)
-            
-            async def sync_one(shot: MovieShot):
-                async with semaphore:
-                    try:
-                        # 如果没有保存 api_key_id，则尝试寻找兜底 Key (旧数据兼容)
-                        api_key_id = shot.api_key_id
-                        if not api_key_id:
-                             # 尝试获取项目的第一个 Key 或默认 Key (这里简化处理)
-                             logger.warning(f"分镜 {shot.id} 缺少 api_key_id，跳过状态同步")
-                             return
-                        
-                        await self.poll_shot_status(str(shot.id), api_key_id)
-                    except Exception as e:
-                        logger.error(f"同步分镜 {shot.id} 状态失败: {e}")
+            # 使用顺序处理以避免多个协程并发访问同一个 SQLAlchemy Session (Session 不是并发安全的)
+            for shot in processing_shots:
+                try:
+                    # 如果没有保存 api_key_id，则尝试寻找兜底 Key (旧数据兼容)
+                    api_key_id = shot.api_key_id
+                    if not api_key_id:
+                         logger.warning(f"分镜 {shot.id} 缺少 api_key_id，跳过状态同步")
+                         continue
+                    
+                    # 直接调用内部同步核心，利用当前的 self.db_session
+                    await self._perform_shot_sync(shot, api_key_id)
+                except Exception as e:
+                    logger.error(f"同步分镜 {shot.id} 状态失败: {e}")
 
-            await asyncio.gather(*[sync_one(s) for s in processing_shots])
             return {"count": len(processing_shots)}
+        
+    async def sync_all_video_tasks_concurrently(self) -> dict:
+        """ 
+        [Celery Beat 调用] 定时同步所有处理中的视频任务状态（并发版）
+        
+        Returns:
+            dict: _description_
+        """
+        
+        async with self:
+            # 获取所有 processing 状态的分镜
 
     async def poll_shot_status(self, shot_id: str, api_key_id: str) -> str:
         """
-        轮询并更新镜头状态
+        [DEPRECATED] 轮询并更新镜头状态 (现在主用定时任务同步)
         """
         async with self:
-            from src.models.chapter import Chapter
-            from sqlalchemy import select
-            
             shot = await self.db_session.get(MovieShot, shot_id)
             if not shot or not shot.video_task_id: return "no_task"
             
-            if shot.status == "completed": return "completed"
+            return await self._perform_shot_sync(shot, api_key_id)
 
-            # 获取 API Key 所需的 owner_id
-            stmt = select(Chapter).join(MovieScript).join(MovieScene).where(MovieScene.id == shot.scene_id)
-            result = await self.db_session.execute(stmt)
-            chapter = result.scalars().first()
-            owner_id = str(chapter.project.owner_id)
+    async def _perform_shot_sync(self, shot: MovieShot, api_key_id: str) -> str:
+        """
+        内部核心逻辑：执行单个镜头的同步逻辑
+        """
+        from src.models.chapter import Chapter
+        from sqlalchemy import select
+        from sqlalchemy.orm import joinedload
+        
+        if shot.status == "completed": return "completed"
 
-            api_key_service = APIKeyService(self.db_session)
-            api_key = await api_key_service.get_api_key_by_id(api_key_id, owner_id)
+        # 获取 API Key 所需的 owner_id
+        # 使用 joinedload 避免 lazy load 异常
+        stmt = select(Chapter).join(MovieScript).join(MovieScene).where(MovieScene.id == shot.scene_id).options(joinedload(Chapter.project))
+        result = await self.db_session.execute(stmt)
+        chapter = result.scalars().first()
+        if not chapter or not chapter.project:
+            logger.error(f"无法确定分镜 {shot.id} 的 owner_id")
+            return "error"
             
-            vector_provider = ProviderFactory.create(
-                provider="vectorengine", 
-                api_key=api_key.get_api_key(),
-                base_url=api_key.base_url
-            )
+        owner_id = str(chapter.project.owner_id)
+
+        api_key_service = APIKeyService(self.db_session)
+        api_key = await api_key_service.get_api_key_by_id(api_key_id, owner_id)
+        
+        vector_provider = ProviderFactory.create(
+            provider="vectorengine", 
+            api_key=api_key.get_api_key(),
+            base_url=api_key.base_url
+        )
+        
+        try:
+            status_resp = await vector_provider.get_task_status(shot.video_task_id) # type: ignore
+            status = status_resp.get("status") # pending, processing, completed, failed
             
-            try:
-                status_resp = await vector_provider.get_task_status(shot.video_task_id) # type: ignore
-                status = status_resp.get("status") # pending, processing, completed, failed
-                
-                if status == "completed":
-                    content_resp = await vector_provider.get_video_content(shot.video_task_id) # type: ignore
-                    shot.video_url = content_resp.get("video_url")
-                    shot.status = "completed"
-                    shot.last_error = None
-                    await self.db_session.commit()
-                elif status == "failed":
-                    shot.status = "failed"
-                    shot.last_error = status_resp.get("error") or "Vector Engine 任务失败"
-                    await self.db_session.commit()
-                
-                return status # type: ignore
-            except Exception as e:
-                logger.error(f"轮询 Vector Engine 异常 [shot_id={shot_id}]: {e}")
-                # 记录错误但不一定修改状态为 failed (除非是明确的任务不存在)
-                if "not found" in str(e).lower():
-                    shot.status = "failed"
-                    shot.last_error = "任务不存在"
-                    await self.db_session.commit()
-                raise
+            if status == "completed":
+                content_resp = await vector_provider.get_video_content(shot.video_task_id) # type: ignore
+                shot.video_url = content_resp.get("video_url")
+                shot.status = "completed"
+                shot.last_error = None
+                await self.db_session.commit()
+            elif status == "failed":
+                shot.status = "failed"
+                shot.last_error = status_resp.get("error") or "Vector Engine 任务失败"
+                await self.db_session.commit()
+            
+            return status # type: ignore
+        except Exception as e:
+            logger.error(f"轮询 Vector Engine 异常 [shot_id={shot.id}]: {e}")
+            # 记录错误但不一定修改状态为 failed (除非是明确的任务不存在)
+            if "not found" in str(e).lower():
+                shot.status = "failed"
+                shot.last_error = "任务不存在"
+                await self.db_session.commit()
+            raise
 
 movie_production_service = MovieProductionService()
 __all__ = ["MovieProductionService", "movie_production_service"]
