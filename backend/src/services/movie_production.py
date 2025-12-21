@@ -46,13 +46,39 @@ async def _sync_one_shot_worker(
             )
             
             status_resp = await vector_provider.get_task_status(shot.video_task_id) # type: ignore
+            logger.info(f"Worker 同步状态 [shot_id={shot.id}]: {status_resp}")
             status = status_resp.get("status")
             
             if status == "completed":
-                content_resp = await vector_provider.get_video_content(shot.video_task_id) # type: ignore
-                shot.video_url = content_resp.get("video_url")
-                shot.status = "completed"
-                shot.last_error = None
+                video_url = status_resp.get("video_url")
+                if video_url:
+                    logger.info(f"下载视频: {video_url}")
+                    async with httpx.AsyncClient(timeout=120.0) as client:
+                        resp = await client.get(video_url)
+                        resp.raise_for_status()
+                        video_data = resp.content
+                    
+                    # 上传到 MinIO
+                    file_id = str(uuid.uuid4())
+                    owner_id = str(shot.scene.script.chapter.project.owner_id)
+                    
+                    upload_file = UploadFile(
+                        filename=f"{file_id}.mp4",
+                        file=io.BytesIO(video_data),
+                    )
+                    
+                    storage_result = await storage_client.upload_file(
+                        user_id=owner_id,
+                        file=upload_file,
+                        metadata={"shot_id": str(shot.id), "type": "video"}
+                    )
+                    shot.video_url = storage_result["object_key"]
+                    shot.status = "completed"
+                    shot.last_error = None
+                    logger.info(f"视频同步并存储完成: shot_id={shot.id}, key={shot.video_url}")
+                else:
+                    shot.status = "failed"
+                    shot.last_error = "Vector Engine 返回的任务已完成但缺少视频链接"
             elif status == "failed":
                 shot.status = "failed"
                 shot.last_error = status_resp.get("error") or "Vector Engine 任务失败"
@@ -410,3 +436,16 @@ class MovieProductionService(SessionManagedService):
 
 movie_production_service = MovieProductionService()
 __all__ = ["MovieProductionService", "movie_production_service"]
+
+
+if __name__ == "__main__":
+    import asyncio
+
+
+    async def test():
+        service = MovieProductionService()
+        result = await service.sync_all_video_tasks()
+        print(result)
+
+
+    asyncio.run(test())

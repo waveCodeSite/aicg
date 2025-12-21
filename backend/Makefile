@@ -63,7 +63,7 @@ migrate-down: ## 回滚最后一次数据库迁移
 
 worker: ## 启动Celery Worker
 	@echo "$(BLUE)🔄 启动Celery Worker...$(RESET)"
-	$(UV) run celery -A src.tasks.task worker --loglevel=info --concurrency=4 && $(UV) run celery -A src.tasks.task beat --loglevel=info
+	$(UV) run celery -A src.tasks.task worker --loglevel=info --concurrency=4
 
 beat: ## 启动Celery beat
 	@echo "$(BLUE)🔄 启动Celery Beat...$(RESET)"
