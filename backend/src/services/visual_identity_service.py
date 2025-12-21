@@ -109,7 +109,10 @@ class VisualIdentityService(SessionManagedService):
             stmt = select(MovieCharacter).where(MovieCharacter.project_id == project_id)
             chars = (await self.db_session.execute(stmt)).scalars().all()
             
-            return await self._generate_shot_first_frame_impl(shot, chars, user_id, api_key_id, model)
+            url = await self._generate_shot_first_frame_impl(shot, chars, user_id, api_key_id, model)
+            if url:
+                await self.db_session.commit()
+            return url
 
     async def _generate_shot_first_frame_impl(self, shot: MovieShot, chars: List[MovieCharacter], user_id: Any, api_key_id: str, model: Optional[str] = None) -> str:
         """
@@ -173,11 +176,22 @@ class VisualIdentityService(SessionManagedService):
 
             # 6. 更新数据库 (不在此处 commit，由异步上下文管理或主流程统一 commit)
             shot.first_frame_url = object_key
+            logger.info(f"首帧生成并存储完成: shot_id={shot.id}, key={object_key}")
             return object_key
             
         except Exception as e:
-            logger.error(f"生成分镜首帧失败: {e}")
+            logger.error(f"生成分镜首帧失败 [shot_id={shot.id}]: {e}")
             raise
+
+    async def regenerate_shot_keyframe(self, shot_id: str, api_key_id: str, model: Optional[str] = None) -> str:
+        """
+        重新生成分镜首帧图(异步任务入口)
+        """
+        logger.info(f"正在重制分镜首帧: shot_id={shot_id}")
+        # 直接复用 generate_shot_first_frame，它已经实现了 Session 管理和 Commit
+        url = await self.generate_shot_first_frame(shot_id, api_key_id, model)
+        logger.info(f"分镜首帧重制完成: shot_id={shot_id}")
+        return url
 
     async def batch_generate_keyframes(self, script_id: str, api_key_id: str, model: Optional[str] = None) -> dict:
         """

@@ -48,6 +48,34 @@ export const movieService = {
      */
     generateKeyframes(scriptId, data) {
         return post(`/movie/scripts/${scriptId}/generate-keyframes`, data)
+    },
+
+    /**
+     * 批量启动分镜视频生产
+     */
+    batchProduceVideos(scriptId, data) {
+        return post(`/movie/scripts/${scriptId}/batch-produce`, data)
+    },
+
+    /**
+     * 查询分镜视频生成状态
+     */
+    getShotStatus(shotId, data) {
+        return get(`/movie/shots/${shotId}/status`, data)
+    },
+
+    /**
+     * 重新生成单个分镜首帧
+     */
+    regenerateKeyframe(shotId, data) {
+        return post(`/movie/shots/${shotId}/regenerate-keyframe`, data)
+    },
+
+    /**
+     * 重新生成单个分镜视频
+     */
+    regenerateVideo(shotId, data) {
+        return post(`/movie/shots/${shotId}/regenerate-video`, data)
     }
 }
 

@@ -317,10 +317,10 @@ def movie_generate_script(self, chapter_id: str, api_key_id: str, model: str = N
     autoretry_for=(Exception,),
     name="movie.produce_shot"
 )
-def movie_produce_shot(self, shot_id: str, api_key_id: str, model: str = "veo3.1-fast"):
+def movie_produce_shot(self, shot_id: str, api_key_id: str, model: str = "veo_3_1-fast", force: bool = False):
     from src.services.movie_production import movie_production_service
-    logger.info(f"Celery任务开始: movie_produce_shot (shot_id={shot_id})")
-    task_id = run_async_task(movie_production_service.produce_shot_video(shot_id, api_key_id, model))
+    logger.info(f"Celery任务开始: movie_produce_shot (shot_id={shot_id}, force={force})")
+    task_id = run_async_task(movie_production_service.produce_shot_video(shot_id, api_key_id, model, force=force))
     logger.info(f"Celery任务提交: Vector Engine Task ID = {task_id}")
     return {"video_task_id": task_id}
 
@@ -363,6 +363,32 @@ def movie_generate_keyframes(self, script_id: str, api_key_id: str, model: str =
     logger.info(f"Celery任务完成: movie_generate_keyframes")
     return stats
 
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.batch_produce_shots"
+)
+def movie_batch_produce_shots(self, script_id: str, api_key_id: str, model: str = "veo_3_1-fast"):
+    from src.services.movie_production import movie_production_service
+    logger.info(f"Celery任务开始: movie_batch_produce_shots (script_id={script_id})")
+    stats = run_async_task(movie_production_service.batch_produce_shot_videos(script_id, api_key_id, model))
+    logger.info(f"Celery任务完成: movie_batch_produce_shots")
+    return stats
+
+@celery_app.task(
+    bind=True,
+    max_retries=1,
+    autoretry_for=(Exception,),
+    name="movie.regenerate_keyframe"
+)
+def movie_regenerate_keyframe(self, shot_id: str, api_key_id: str, model: str = None):
+    from src.services.visual_identity_service import visual_identity_service
+    logger.info(f"Celery任务开始: movie_regenerate_keyframe (shot_id={shot_id})")
+    url = run_async_task(visual_identity_service.regenerate_shot_keyframe(shot_id, api_key_id, model))
+    logger.info(f"Celery任务完成: movie_regenerate_keyframe")
+    return {"first_frame_url": url}
+
 
 # ---------------------------
 # 导出的任务列表
@@ -382,4 +408,6 @@ __all__ = [
     'movie_extract_characters',
     'movie_generate_character_avatar',
     'movie_generate_keyframes',
+    'movie_batch_produce_shots',
+    'movie_regenerate_keyframe',
 ]

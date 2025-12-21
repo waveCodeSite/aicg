@@ -13,6 +13,7 @@ class ScriptGenerateRequest(BaseModel):
     model: Optional[str] = None
 
 class MovieShotBase(BaseModel):
+    id: UUID4
     order_index: int
     visual_description: str
     camera_movement: Optional[str] = None
@@ -20,6 +21,8 @@ class MovieShotBase(BaseModel):
     performance_prompt: Optional[str] = None
     first_frame_url: Optional[str] = None
     video_url: Optional[str] = None
+    video_prompt: Optional[str] = None
+    status: Optional[str] = "pending"
     
     class Config:
         from_attributes = True
@@ -32,6 +35,7 @@ class MovieShotBase(BaseModel):
         return v
 
 class MovieSceneBase(BaseModel):
+    id: UUID4
     order_index: int
     location: Optional[str] = None
     time_of_day: Optional[str] = None
@@ -101,4 +105,4 @@ class KeyframeGenerateRequest(BaseModel):
 # --- 生产相关 ---
 class ShotProduceRequest(BaseModel):
     api_key_id: str
-    model: Optional[str] = "veo3.1-fast"
+    model: Optional[str] = "veo_3_1-fast"

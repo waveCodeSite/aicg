@@ -8,12 +8,16 @@
       </div>
       <div class="header-right">
         <el-space>
-          <el-button @click="showCastManager = !showCastManager" :type="showCastManager ? 'primary' : 'default'" plain>
-            {{ showCastManager ? '隐藏剧组' : '显示剧组' }}
+          <el-select v-model="genConfig.api_key_id" placeholder="选择 Key" style="width: 150px" size="small">
+            <el-option v-for="k in apiKeys" :key="k.id" :label="k.name" :value="k.id" />
+          </el-select>
+          <el-button @click="showCastManager = !showCastManager" :type="showCastManager ? 'primary' : 'default'" size="small" plain>
+            {{ showCastManager ? '剧组' : '显示剧组' }}
           </el-button>
-          <el-button type="success" :icon="Image" @click="handleGenerateKeyframes" :disabled="!script" :loading="generatingKeyframes">批量生成首帧</el-button>
-          <el-button type="primary" @click="handleGenerateScript" :loading="generatingScript">
-            {{ script ? '重新生成剧本' : '生成 AI 剧本' }}
+          <el-button type="success" :icon="Image" @click="handleGenerateKeyframes" :disabled="!script" :loading="generatingKeyframes" size="small">批量绘图</el-button>
+          <el-button type="warning" :icon="VideoPlay" @click="handleBatchProduceVideos" :disabled="!script || !allCharactersReady" :loading="batchProducing" size="small">批量视频</el-button>
+          <el-button type="primary" @click="handleGenerateScript" :loading="generatingScript" size="small">
+            {{ script ? '重制剧本' : '生成 AI 剧本' }}
           </el-button>
         </el-space>
       </div>
@@ -35,24 +39,60 @@
             <div class="shots-grid">
               <el-card v-for="shot in scene.shots" :key="shot.order_index" class="shot-card" shadow="hover">
                 <div class="shot-visual">
-                  <el-image :src="shot.first_frame_url" fit="cover" class="shot-preview">
-                    <template #placeholder>
-                      <div class="image-placeholder">
-                        <el-icon><Picture /></el-icon>
-                        <span>等待生成首帧</span>
-                      </div>
-                    </template>
-                  </el-image>
-                  <div class="shot-actions">
-                    <el-button circle icon="VideoPlay" type="primary" @click="handleProduceShot(shot)"></el-button>
+                  <!-- 视频播放器 (如果有视频) -->
+                  <div v-if="shot.video_url && showVideo[shot.id]" class="video-container">
+                    <video :src="shot.video_url" controls class="shot-video" :poster="shot.first_frame_url"></video>
+                    <el-button class="view-image-btn" size="small" circle @click="toggleShotView(shot.id, false)">
+                      <el-icon><Picture /></el-icon>
+                    </el-button>
                   </div>
+                  
+                  <!-- 首帧图 -->
+                  <template v-else>
+                    <el-image :src="shot.first_frame_url" fit="cover" class="shot-preview">
+                      <template #placeholder>
+                        <div class="image-placeholder">
+                          <el-icon><Picture /></el-icon>
+                          <span>{{ shot.status === 'processing' ? '视频生成中...' : '等待生成首帧' }}</span>
+                        </div>
+                      </template>
+                    </el-image>
+                    <div class="shot-actions">
+                      <el-tooltip v-if="!shot.first_frame_url" content="请先生成首帧图">
+                        <el-button circle icon="VideoPlay" type="info" disabled></el-button>
+                      </el-tooltip>
+                      <el-tooltip v-else-if="!canProduceShot(shot)" content="部分角色形象缺失，请先生成">
+                         <el-button circle icon="VideoPlay" type="info" disabled></el-button>
+                      </el-tooltip>
+                      <el-button v-else circle icon="VideoPlay" type="primary" @click="handleProduceShot(shot)" :loading="shot.status === 'processing'"></el-button>
+                    </div>
+                  </template>
                 </div>
                 <div class="shot-info">
-                  <div class="shot-index">SHOT {{ shot.order_index }}</div>
+                  <div class="shot-header-row">
+                    <div class="shot-index">SHOT {{ shot.order_index }}</div>
+                    <el-dropdown trigger="click" @command="(cmd) => handleShotCommand(cmd, shot)">
+                        <el-button link><el-icon><MoreFilled /></el-icon></el-button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item command="regenerate-keyframe">重新生成首帧</el-dropdown-item>
+                            <el-dropdown-item v-if="shot.video_url" command="regenerate-video">重新生成视频</el-dropdown-item>
+                            <el-dropdown-item v-if="shot.video_url && !showVideo[shot.id]" command="switch-video">切换到视频</el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+                  </div>
                   <div class="shot-desc">{{ shot.visual_description }}</div>
                   <div v-if="shot.dialogue" class="shot-dialogue">
                     <el-icon><Mic /></el-icon>
                     <span class="dialogue-text">"{{ shot.dialogue }}"</span>
+                  </div>
+                  <div v-if="shot.video_prompt" class="shot-prompt-tag">
+                    <el-popover placement="top" title="Video Prompt (English)" :width="300" trigger="hover" :content="shot.video_prompt">
+                      <template #reference>
+                        <el-tag size="small" type="info" class="mt-2">PROMPT</el-tag>
+                      </template>
+                    </el-popover>
                   </div>
                 </div>
               </el-card>
@@ -161,10 +201,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Picture, Mic, VideoPlay, ArrowLeft, User } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Picture, Mic, VideoPlay, ArrowLeft, User, MagicStick, Cpu, MoreFilled } from '@element-plus/icons-vue'
 import { useTaskPoller } from '@/composables/useTaskPoller'
 import movieService from '@/services/movie'
 import api from '@/services/api'
@@ -182,13 +222,19 @@ const loading = ref(false)
 const generatingScript = ref(false)
 const extractingCharacters = ref(false)
 const generatingKeyframes = ref(false)
+const batchProducing = ref(false)
 const generatingAvatarId = ref(null)
 const selectedCharacter = ref(null)
 const showCastManager = ref(true) // Default open
 const showGenerateDialog = ref(false)
-const dialogMode = ref('script') // 'script' | 'character' | 'avatar' | 'keyframes'
+const dialogMode = ref('script') // 'script' | 'character' | 'avatar' | 'keyframes' | 'produce-single' | 'produce-batch' | 'regen-keyframe' | 'regen-video'
 const modelOptions = ref([])
 const loadingModels = ref(false)
+const selectedShotId = ref(null)
+
+// 视图切换控制
+const showVideo = ref({}) // {shotId: boolean}
+const activePollers = ref({}) // {shotId: timerId}
 
 const genConfig = ref({
   api_key_id: '',
@@ -248,6 +294,25 @@ const fetchModels = async () => {
   }
 }
 
+// 计算角色是否全部就绪 (至少生成了头像)
+const allCharactersReady = computed(() => {
+  if (characters.value.length === 0) return false
+  return characters.value.every(c => !!c.avatar_url)
+})
+
+// 检查某个分镜是否可以生产视频
+const canProduceShot = (shot) => {
+  if (!shot.first_frame_url) return false
+  
+  // 检查分镜中提到的角色是否有形象
+  for (const char of characters.value) {
+    if (shot.visual_description.includes(char.name) && !char.avatar_url) {
+      return false
+    }
+  }
+  return true
+}
+
 // 监听 API Key 变化
 watch(() => genConfig.value.api_key_id, fetchModels)
 
@@ -295,15 +360,110 @@ const handleDialogConfirm = () => {
     confirmExtract()
   } else if (dialogMode.value === 'keyframes') {
     confirmKeyframes()
+  } else if (dialogMode.value === 'produce-single') {
+    confirmProduceSingle()
+  } else if (dialogMode.value === 'produce-batch') {
+    confirmProduceBatch()
+  } else if (dialogMode.value === 'regen-keyframe') {
+    confirmRegenKeyframe()
+  } else if (dialogMode.value === 'regen-video') {
+    confirmRegenVideo()
   } else {
     confirmAvatar()
   }
+}
+
+const confirmRegenKeyframe = async () => {
+    if (!genConfig.value.api_key_id) {
+        ElMessage.warning('请选择 API Key')
+        return
+    }
+    const shotId = selectedShotId.value
+    if (!shotId) return
+
+    showGenerateDialog.value = false
+    try {
+        await movieService.regenerateKeyframe(shotId, { 
+            api_key_id: genConfig.value.api_key_id,
+            model: genConfig.value.model
+        })
+        ElMessage.success('首帧重制任务已提交')
+        loadData() // 刷新列表以显示 processing 状态
+    } catch (err) {
+        ElMessage.error('重制失败')
+    }
+}
+
+const confirmRegenVideo = async () => {
+    if (!genConfig.value.api_key_id) {
+        ElMessage.warning('请选择 API Key')
+        return
+    }
+    const shotId = selectedShotId.value
+    if (!shotId) return
+
+    showGenerateDialog.value = false
+    try {
+        await movieService.regenerateVideo(shotId, { 
+            api_key_id: genConfig.value.api_key_id,
+            model: genConfig.value.model
+        })
+        ElMessage.success('视频重制任务已提交')
+        pollShotVideo(shotId)
+    } catch (err) {
+        ElMessage.error('重制失败')
+    }
+}
+
+const confirmProduceSingle = async () => {
+    if (!genConfig.value.api_key_id) {
+        ElMessage.warning('请选择 API Key')
+        return
+    }
+    const shotId = selectedShotId.value
+    if (!shotId) return
+
+    showGenerateDialog.value = false
+    try {
+        await movieService.produceShot(shotId, { 
+            api_key_id: genConfig.value.api_key_id 
+        })
+        ElMessage.success('视频生产任务已提交')
+        pollShotVideo(shotId)
+    } catch (err) {
+        ElMessage.error('视频生产失败')
+    }
+}
+
+const confirmProduceBatch = async () => {
+    if (!genConfig.value.api_key_id) {
+        ElMessage.warning('请选择 API Key')
+        return
+    }
+    showGenerateDialog.value = false
+    try {
+        batchProducing.value = true
+        const response = await movieService.batchProduceVideos(script.value.id, {
+            api_key_id: genConfig.value.api_key_id,
+            model: 'veo3.1-fast'
+        })
+        ElMessage.success(response.message || '批量视频生产任务已启动')
+        await loadData()
+    } catch (err) {
+        ElMessage.error('启动批量生产失败')
+    } finally {
+        batchProducing.value = false
+    }
 }
 
 const getDialogTitle = () => {
   if (dialogMode.value === 'script') return '剧本适配配置'
   if (dialogMode.value === 'character') return '角色提取配置'
   if (dialogMode.value === 'keyframes') return '首帧批量生成'
+  if (dialogMode.value === 'produce-single') return '生成分镜视频'
+  if (dialogMode.value === 'produce-batch') return '批量生成视频'
+  if (dialogMode.value === 'regen-keyframe') return '重新生成首帧'
+  if (dialogMode.value === 'regen-video') return '重新生成视频'
   return '角色形象生成'
 }
 
@@ -311,6 +471,7 @@ const getConfirmText = () => {
   if (dialogMode.value === 'script') return '开始生成'
   if (dialogMode.value === 'character') return '开始提取'
   if (dialogMode.value === 'keyframes') return '开始批量绘图'
+  if (dialogMode.value.startsWith('produce') || dialogMode.value.startsWith('regen')) return '开始制作'
   return '开始绘图'
 }
 
@@ -484,15 +645,100 @@ const confirmKeyframes = async () => {
 }
 
 const handleProduceShot = async (shot) => {
-  try {
-    await movieService.produceShot(shot.id, { 
-        api_key_id: genConfig.value.api_key_id 
-    })
-    ElMessage.success('分镜视频生产任务已提交')
-  } catch (err) {
-    ElMessage.error('视频生产失败')
+  selectedShotId.value = shot.id
+  if (!genConfig.value.api_key_id) {
+    dialogMode.value = 'produce-single'
+    showGenerateDialog.value = true
+    return
+  }
+  confirmProduceSingle()
+}
+
+// 批量生产视频
+const handleBatchProduceVideos = async () => {
+  if (!genConfig.value.api_key_id) {
+    dialogMode.value = 'produce-batch'
+    showGenerateDialog.value = true
+    return
+  }
+  confirmProduceBatch()
+}
+
+// 视图切换
+const toggleShotView = (shotId, visible) => {
+  showVideo.value[shotId] = visible
+}
+
+// 下拉菜单处理
+const handleShotCommand = async (command, shot) => {
+  if (command === 'regenerate-keyframe') {
+    handleRegenerateKeyframe(shot)
+  } else if (command === 'regenerate-video') {
+    handleRegenerateVideo(shot)
+  } else if (command === 'switch-video') {
+    showVideo.value[shot.id] = true
   }
 }
+
+const handleRegenerateKeyframe = (shot) => {
+  selectedShotId.value = shot.id
+  dialogMode.value = 'regen-keyframe'
+  showGenerateDialog.value = true
+}
+
+const handleRegenerateVideo = (shot) => {
+  selectedShotId.value = shot.id
+  dialogMode.value = 'regen-video'
+  showGenerateDialog.value = true
+}
+
+// --- 轮询逻辑 ---
+const pollShotVideo = async (shotId) => {
+  if (activePollers.value[shotId]) return
+
+  const timer = setInterval(async () => {
+    try {
+      const { status } = await movieService.getShotStatus(shotId, { 
+        api_key_id: genConfig.value.api_key_id 
+      })
+      
+      if (status === 'completed' || status === 'failed') {
+        clearInterval(timer)
+        delete activePollers.value[shotId]
+        if (status === 'completed') {
+          ElMessage.success('分镜视频生成完成')
+          showVideo.value[shotId] = true
+        } else {
+          ElMessage.error('分镜视频生成失败')
+        }
+        loadData()
+      }
+    } catch (err) {
+      clearInterval(timer)
+      delete activePollers.value[shotId]
+    }
+  }, 10000)
+
+  activePollers.value[shotId] = timer
+}
+
+watch(() => script.value, (newScript) => {
+  if (!newScript) return
+  newScript.scenes.forEach(scene => {
+    scene.shots.forEach(shot => {
+      if (shot.status === 'processing' && !activePollers.value[shot.id]) {
+        pollShotVideo(shot.id)
+      }
+      if (shot.video_url && showVideo.value[shot.id] === undefined) {
+         showVideo.value[shot.id] = true
+      }
+    })
+  })
+}, { deep: true })
+
+onUnmounted(() => {
+  Object.values(activePollers.value).forEach(timer => clearInterval(timer))
+})
 
 const goBack = () => router.back()
 
@@ -613,11 +859,17 @@ onMounted(loadData)
   padding: 12px 0;
 }
 
+.shot-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
 .shot-index {
   font-size: 12px;
   color: #409eff;
   font-weight: bold;
-  margin-bottom: 5px;
 }
 
 .shot-desc {
@@ -705,15 +957,42 @@ onMounted(loadData)
   color: #303133;
 }
 
-.char-role {
-  font-size: 12px;
-  color: #606266;
-  margin-bottom: 10px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.video-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #000;
+}
+
+.shot-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.view-image-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0.6;
+  transition: opacity 0.3s;
+  z-index: 10;
+}
+
+.view-image-btn:hover {
+  opacity: 1;
+}
+
+.shot-more-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+}
+
+.shot-prompt-tag {
+  cursor: help;
+  margin-top: 8px;
 }
 
 .char-traits {

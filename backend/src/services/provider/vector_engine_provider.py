@@ -22,7 +22,7 @@ class VectorEngineProvider:
         self, 
         prompt: str, 
         images: Optional[List[str]] = None, 
-        model: str = "veo3.1-fast", 
+        model: str = "veo_3_1-fast", 
         aspect_ratio: str = "16:9",
         enable_upsample: bool = True,
         enhance_prompt: bool = True,
