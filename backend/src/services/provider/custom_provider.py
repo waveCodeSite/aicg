@@ -132,15 +132,43 @@ class CustomProvider(BaseLLMProvider):
         except (KeyError, IndexError) as e:
             raise ValueError(f"无法从 Gemini 响应中提取图像数据: {e}")
 
-    async def generate_image_gemini(self, prompt: str):
+    async def generate_image_gemini(self, prompt: str, **kwargs: Any):
         """
         Gemini 生成图像（携程异步版本）
-
+        支持 reference_images 参数 (Persona)
         """
         base_url = self.base_url.replace("/v1", "")
         url = f"{base_url}/v1beta/models/gemini-3-pro-image-preview:generateContent?key={self.api_key}"
+        
+        # 构造 prompt 部分
+        parts = [{"text": prompt}]
+        
+        # 处理参考图 (Persona)
+        reference_images = kwargs.get("reference_images")
+        if reference_images:
+            import base64
+            
+            # 最大支持 5 张参考图
+            for img_url in reference_images[:5]:
+                try:
+                    # 下载参考图并转 Base64
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(img_url, timeout=10) as resp:
+                            if resp.status == 200:
+                                img_data = await resp.read()
+                                b64_img = base64.b64encode(img_data).decode('utf-8')
+                                parts.append({
+                                    "inline_data": {
+                                        "mime_type": "image/jpeg", # 假设 jpeg, 实际应检测
+                                        "data": b64_img
+                                    }
+                                })
+                                logger.info(f"添加参考图到 Gemini 提示词: {img_url}")
+                except Exception as e:
+                    logger.warning(f"下载参考图失败 {img_url}: {e}")
+
         payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
         }
 
@@ -149,5 +177,10 @@ class CustomProvider(BaseLLMProvider):
                 async with session.post(
                     url, json=payload, headers={"Content-Type": "application/json"}
                 ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Gemini API Error: {error_text}")
+                        raise ValueError(f"Gemini API 请求失败: {resp.status} - {error_text}")
+                        
                     result = await resp.text()
                     return json.loads(result)

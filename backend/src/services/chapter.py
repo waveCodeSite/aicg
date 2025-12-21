@@ -587,6 +587,47 @@ class ChapterService(BaseService):
         result = await self.execute(stmt)
         return result.scalars().all()
 
+    async def transition_to_materials_prepared(self, chapter_id: str) -> Chapter:
+        """
+        将章节状态转换为 materials_prepared
+        需要验证该章节的所有分镜视频都已生成完成
+        """
+        from src.models.movie import MovieScript
+        from src.services.movie_production import movie_production_service
+        
+        # 1. 获取章节
+        chapter = await self.get_chapter_by_id(chapter_id)
+        if not chapter:
+            raise NotFoundError("章节不存在", resource_type="chapter")
+        
+        # 2. 获取章节的剧本
+        stmt = select(MovieScript).where(MovieScript.chapter_id == chapter_id)
+        result = await self.execute(stmt)
+        script = result.scalars().first()
+        
+        if not script:
+            raise BusinessLogicError(message="该章节尚未生成剧本，无法进入素材准备阶段")
+        
+        # 3. 检查剧本完成度
+        completion_status = await movie_production_service.check_script_completion(str(script.id))
+        
+        if not completion_status["is_complete"]:
+            raise BusinessLogicError(
+                message=f"剧本尚未完成所有分镜视频生成。"
+                        f"总计: {completion_status['total']}, "
+                        f"已完成: {completion_status['completed']}, "
+                        f"待处理: {completion_status['pending']}, "
+                        f"失败: {completion_status['failed']}, "
+                        f"处理中: {completion_status['processing']}"
+            )
+        
+        # 4. 更新章节状态
+        chapter.status = ModelChapterStatus.MATERIALS_PREPARED
+        await self.commit()
+        
+        logger.info(f"章节 {chapter_id} 已转换为 materials_prepared 状态")
+        return chapter
+
 
 __all__ = [
     "ChapterService",

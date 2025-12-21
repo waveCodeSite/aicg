@@ -33,48 +33,89 @@ async def _generate_one_frame_worker(
     frame_type: str,
     model: Optional[str],
     semaphore: asyncio.Semaphore,
-    storage_client
+    storage_client,
+    ref_images: List[str] = None
 ):
     """
     单个分镜单帧生成的 Worker - 负责生成、下载、上传，不负责 Commit
+    包含角色参考图以确保人物一致性
     """
     async with semaphore:
         try:
-            # 1. 构建 Prompt
-            variation = "Start of action" if frame_type == "first" else "End of action, slight variation from start"
-            base_prompt = f"{shot.visual_description}. {shot.camera_movement or ''}. {variation}."
+            # 1. 构建 Prompt (包含角色信息)
+            # 分析镜头运动以生成更流畅的起始帧提示词
+            camera_move = (shot.camera_movement or "").lower()
+            visual_desc = shot.visual_description
+            
+            if frame_type == "first":
+                if "pan" in camera_move:
+                    variation = "Start of the pan shot, framing the initial composition"
+                elif "zoom in" in camera_move:
+                    variation = "Wide shot, establishing context before the zoom"
+                elif "zoom out" in camera_move:
+                    variation = "Close-up shot, detail view before zooming out"
+                else:
+                    variation = "Cinematic establishing shot, start of action"
+            else:
+                if "pan" in camera_move:
+                    variation = "End of the pan shot, revealing the new composition, continuous lighting"
+                elif "zoom in" in camera_move:
+                    variation = "Close-up shot, result of the zoom in, focused details"
+                elif "zoom out" in camera_move:
+                    variation = "Wide shot, result of the zoom out, revealing surroundings"
+                else:
+                    variation = "End of action, evolved state, consistent lighting and atmosphere with start"
+
+            base_prompt = f"{visual_desc}. {shot.camera_movement or ''}. {variation}."
             
             character_context = ""
             for char in chars:
                 if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
                     character_context += f" Character {char.name}: {char.visual_traits}."
 
-            final_prompt = f"{base_prompt}. {character_context}. Cinematic movie still, 8k, highly detailed."
+            # 如果有角色参考图，强调一致性
+            if ref_images:
+                character_context += " IMPORTANT: Maintain strict visual consistency with the provided character reference images. Ensure same face, clothing, and body type."
+
+            final_prompt = f"{base_prompt}. {character_context}. Cinematic movie still, 8k, highly detailed, photorealistic, dramatic lighting."
             
-            # 2. Provider 调用
+            # 2. Provider 调用 (包含参考图)
             img_provider = ProviderFactory.create(
                 provider=api_key.provider,
                 api_key=api_key.get_api_key(),
                 base_url=api_key.base_url
             )
 
-            logger.info(f"生成分镜 {shot.id} {frame_type} 帧, Prompt: {final_prompt}")
+            logger.info(f"生成分镜 {shot.id} {frame_type} 帧, Prompt: {final_prompt}, Refs: {len(ref_images or [])}")
+            
+            # 准备生成参数
+            gen_params = {
+                "prompt": final_prompt,
+                "model": model
+            }
+            
+            # 某些 provider 支持参考图 (如 SiliconFlow)
+            # 这里简化处理，实际可能需要根据 provider 类型调整
+            if ref_images and hasattr(img_provider, 'generate_image_with_references'):
+                gen_params["reference_images"] = ref_images
+            
             result = await retry_with_backoff(
-                lambda: img_provider.generate_image(
-                    prompt=final_prompt,
-                    model=model
-                )
+                lambda: img_provider.generate_image(**gen_params)
             )
             
             image_data = result.data[0]
-            image_url = image_data.url
             
-            # 3. 下载图片
-            async with aiohttp.ClientSession() as http_session:
-                async with http_session.get(image_url) as resp:
-                    if resp.status != 200:
-                        raise Exception(f"下载图片失败: {resp.status}")
-                    content = await resp.read()
+            # 3. 获取图片内容 (URL 或 Base64)
+            if image_data.b64_json:
+                content = base64.b64decode(image_data.b64_json)
+            elif image_data.url:
+                async with aiohttp.ClientSession() as http_session:
+                    async with http_session.get(image_data.url) as resp:
+                        if resp.status != 200:
+                            raise Exception(f"下载图片失败: {resp.status}")
+                        content = await resp.read()
+            else:
+                raise Exception("Provider 返回了空的图片数据")
 
             # 4. 上传存储
             file_id = str(uuid.uuid4())
@@ -93,8 +134,10 @@ async def _generate_one_frame_worker(
             # 5. 更新对象属性 (不 Commit)
             if frame_type == "first":
                 shot.first_frame_url = object_key
+                shot.first_frame_prompt = final_prompt
             else:
                 shot.last_frame_url = object_key
+                shot.last_frame_prompt = final_prompt
                 
             logger.info(f"{frame_type} 帧生成并存储完成: shot_id={shot.id}, key={object_key}")
             return True
@@ -181,13 +224,23 @@ class VisualIdentityService(SessionManagedService):
             stmt = select(MovieCharacter).where(MovieCharacter.project_id == project_id)
             chars = (await self.db_session.execute(stmt)).scalars().all()
             
+            # 收集角色参考图
+            ref_images = []
+            for char in chars:
+                if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
+                    if char.avatar_url:
+                        ref_images.append(char.avatar_url)
+                    if char.reference_images:
+                        ref_images.extend(char.reference_images)
+            ref_images = list(dict.fromkeys(ref_images))[:3]  # 去重并限制数量
+            
             api_key_service = APIKeyService(self.db_session)
             api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
             
             storage_client = await get_storage_client()
             semaphore = asyncio.Semaphore(1)
             
-            success = await _generate_one_frame_worker(shot, chars, user_id, api_key, "first", model, semaphore, storage_client)
+            success = await _generate_one_frame_worker(shot, chars, user_id, api_key, "first", model, semaphore, storage_client, ref_images)
             if success:
                 await self.db_session.commit()
                 return shot.first_frame_url # type: ignore
@@ -208,13 +261,23 @@ class VisualIdentityService(SessionManagedService):
             stmt = select(MovieCharacter).where(MovieCharacter.project_id == project_id)
             chars = (await self.db_session.execute(stmt)).scalars().all()
             
+            # 收集角色参考图
+            ref_images = []
+            for char in chars:
+                if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
+                    if char.avatar_url:
+                        ref_images.append(char.avatar_url)
+                    if char.reference_images:
+                        ref_images.extend(char.reference_images)
+            ref_images = list(dict.fromkeys(ref_images))[:3]  # 去重并限制数量
+            
             api_key_service = APIKeyService(self.db_session)
             api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
             
             storage_client = await get_storage_client()
             semaphore = asyncio.Semaphore(1)
             
-            success = await _generate_one_frame_worker(shot, chars, user_id, api_key, "last", model, semaphore, storage_client)
+            success = await _generate_one_frame_worker(shot, chars, user_id, api_key, "last", model, semaphore, storage_client, ref_images)
             if success:
                 await self.db_session.commit()
                 return shot.last_frame_url # type: ignore
@@ -249,22 +312,46 @@ class VisualIdentityService(SessionManagedService):
             api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
             storage_client = await get_storage_client()
 
-            # 4. 筛选待处理分镜
-            pending_shots = []
+            # 4. 筛选待处理任务
+            tasks = []
+            semaphore = asyncio.Semaphore(5)
+            
             for scene in script.scenes:
                 for shot in scene.shots:
+                    # 检查是否需要生成首帧
                     if not shot.first_frame_url:
-                        pending_shots.append(shot)
+                        # 收集角色参考图
+                        ref_images = []
+                        for char in chars:
+                            if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
+                                if char.avatar_url:
+                                    ref_images.append(char.avatar_url)
+                                if char.reference_images:
+                                    ref_images.extend(char.reference_images)
+                        ref_images = list(dict.fromkeys(ref_images))[:3]
+                        
+                        tasks.append(
+                            _generate_one_frame_worker(shot, chars, user_id, api_key, "first", model, semaphore, storage_client, ref_images)
+                        )
+                    
+                    # 检查是否需要生成尾帧
+                    if not shot.last_frame_url:
+                        # 重复收集参考图逻辑 (也可以提取为 helper)
+                        ref_images = []
+                        for char in chars:
+                            if char.name in shot.visual_description or (shot.dialogue and char.name in shot.dialogue):
+                                if char.avatar_url:
+                                    ref_images.append(char.avatar_url)
+                                if char.reference_images:
+                                    ref_images.extend(char.reference_images)
+                        ref_images = list(dict.fromkeys(ref_images))[:3]
+                        
+                        tasks.append(
+                            _generate_one_frame_worker(shot, chars, user_id, api_key, "last", model, semaphore, storage_client, ref_images)
+                        )
             
-            if not pending_shots:
-                return {"total": 0, "success": 0, "failed": 0, "message": "所有分镜已有首帧"}
-
-            # 5. 构建任务
-            semaphore = asyncio.Semaphore(5)
-            tasks = [
-                _generate_one_frame_worker(s, chars, user_id, api_key, "first", model, semaphore, storage_client)
-                for s in pending_shots
-            ]
+            if not tasks:
+                return {"total": 0, "success": 0, "failed": 0, "message": "所有分镜已有首尾帧"}
 
             # 6. 执行并发
             results = await asyncio.gather(*tasks)
@@ -276,7 +363,7 @@ class VisualIdentityService(SessionManagedService):
             await self.db_session.commit()
             
             return {
-                "total": len(pending_shots),
+                "total": len(tasks),
                 "success": success_count,
                 "failed": failed_count,
                 "message": f"批量生成完成: 成功 {success_count}, 失败 {failed_count}"

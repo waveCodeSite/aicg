@@ -301,6 +301,9 @@ const fetchModels = async () => {
   
   loadingModels.value = true
   try {
+    const key = apiKeys.value.find(k => k.id === newKeyId)
+    if (!key) return
+
     // 确定模型类型
     let modelType = 'text'
     const imageModes = ['avatar', 'keyframes', 'regen-keyframe', 'regen-last-frame']
@@ -312,9 +315,6 @@ const fetchModels = async () => {
       modelType = 'video'
     }
 
-    console.log(`Loading models for mode: ${dialogMode.value}, types: ${modelType}`)
-    const models = await apiKeysService.getAPIKeyModels(newKeyId, modelType)
-    modelOptions.value = models || []
     
     // 如果没有模型，尝试获取 'text' 类型作为兜底 (针对某些全能 KEY)
     if (modelOptions.value.length === 0 && modelType !== 'text') {

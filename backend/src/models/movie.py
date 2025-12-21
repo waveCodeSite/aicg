@@ -62,7 +62,9 @@ class MovieShot(BaseModel):
     
     # 生成资源
     first_frame_url = Column(String(500), comment="分镜首帧图URL")
+    first_frame_prompt = Column(Text, comment="首帧生成提示词")
     last_frame_url = Column(String(500), comment="分镜尾帧图URL")
+    last_frame_prompt = Column(Text, comment="尾帧生成提示词")
     video_url = Column(String(500), comment="生成的视频URL")
     video_prompt = Column(Text, comment="用于生成视频的最终提示词（包含一致性特征）")
     video_task_id = Column(String(100), comment="Vector Engine 任务ID")

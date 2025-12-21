@@ -194,3 +194,50 @@ async def regenerate_video(
     from src.tasks.task import movie_produce_shot
     task = movie_produce_shot.delay(shot_id, req.api_key_id, req.model, force=True)
     return {"task_id": task.id, "message": "视频重制任务已提交"}
+
+@router.get("/scripts/{script_id}/completion-status", summary="检查剧本完成度")
+async def check_script_completion(
+    script_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_required)
+):
+    """
+    检查剧本的所有分镜是否已完成视频生成
+    返回详细的统计信息
+    """
+    from src.services.movie_production import movie_production_service
+    
+    try:
+        completion_status = await movie_production_service.check_script_completion(script_id)
+        return completion_status
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/chapters/{chapter_id}/prepare-materials", summary="准备章节素材")
+async def prepare_chapter_materials(
+    chapter_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_required)
+):
+    """
+    将章节状态转换为 materials_prepared
+    需要验证所有分镜视频都已生成完成
+    """
+    from src.services.chapter import ChapterService
+    from src.core.exceptions import BusinessLogicError, NotFoundError
+    
+    chapter_service = ChapterService(db)
+    
+    try:
+        chapter = await chapter_service.transition_to_materials_prepared(chapter_id)
+        return {
+            "success": True,
+            "message": "章节已进入素材准备阶段",
+            "chapter": {
+                "id": str(chapter.id),
+                "title": chapter.title,
+                "status": chapter.status
+            }
+        }
+    except (BusinessLogicError, NotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -20,7 +20,9 @@ class MovieShotBase(BaseModel):
     dialogue: Optional[str] = None
     performance_prompt: Optional[str] = None
     first_frame_url: Optional[str] = None
+    first_frame_prompt: Optional[str] = None
     last_frame_url: Optional[str] = None
+    last_frame_prompt: Optional[str] = None
     video_url: Optional[str] = None
     video_prompt: Optional[str] = None
     api_key_id: Optional[str] = None

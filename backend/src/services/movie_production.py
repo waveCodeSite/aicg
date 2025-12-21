@@ -437,6 +437,49 @@ class MovieProductionService(SessionManagedService):
             await self.db_session.commit()
             return shot.status
 
+    async def check_script_completion(self, script_id: str) -> dict:
+        """
+        检查剧本的所有分镜是否已完成视频生成
+        """
+        async with self:
+            script = await self.db_session.get(MovieScript, script_id, options=[
+                selectinload(MovieScript.scenes).selectinload(MovieScene.shots)
+            ])
+            if not script:
+                raise ValueError("剧本不存在")
+            
+            total = 0
+            completed = 0
+            pending = 0
+            failed = 0
+            processing = 0
+            
+            for scene in script.scenes:
+                for shot in scene.shots:
+                    total += 1
+                    if shot.status == "completed" and shot.video_url:
+                        completed += 1
+                    elif shot.status == "failed":
+                        failed += 1
+                    elif shot.status == "processing":
+                        processing += 1
+                    else:
+                        pending += 1
+            
+            is_complete = (total > 0 and completed == total)
+            can_transition = is_complete
+            
+            return {
+                "total": total,
+                "completed": completed,
+                "pending": pending,
+                "failed": failed,
+                "processing": processing,
+                "is_complete": is_complete,
+                "can_transition": can_transition,
+                "completion_rate": round(completed / total * 100, 2) if total > 0 else 0
+            }
+
 movie_production_service = MovieProductionService()
 __all__ = ["MovieProductionService", "movie_production_service"]
 
