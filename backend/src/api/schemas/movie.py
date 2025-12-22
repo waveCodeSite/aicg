@@ -111,3 +111,16 @@ class KeyframeGenerateRequest(BaseModel):
 class ShotProduceRequest(BaseModel):
     api_key_id: str
     model: Optional[str] = "veo_3_1-fast"
+
+class BatchProduceRequest(BaseModel):
+    api_key_id: str
+    model: Optional[str] = None
+
+# --- 更新请求 ---
+class ShotUpdateRequest(BaseModel):
+    video_prompt: Optional[str] = None
+    first_frame_prompt: Optional[str] = None
+    last_frame_prompt: Optional[str] = None
+    visual_description: Optional[str] = None
+    dialogue: Optional[str] = None
+    camera_movement: Optional[str] = None

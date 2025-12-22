@@ -23,6 +23,10 @@
         :batch-producing="batchProducing"
         :all-charactersReady="allCharactersReady"
         :loading-script="generatingScript"
+        :is-polling="isPolling"
+        :task-status="taskStatus"
+        :task-statistics="taskStatistics"
+        :task-result="taskResult"
         @back="goBack"
         @check-completion="checkCompletion"
         @prepare-materials="handlePrepareMaterials"
@@ -31,14 +35,19 @@
         @generate-keyframes="handleGenerateKeyframes"
         @produce-batch="handleBatchProduceVideos"
         @generate-script="handleGenerateScript"
+        @terminate="terminateTask"
       />
 
       <!-- 内容区 -->
       <div class="studio-body">
-        <div class="studio-content" v-loading="loading || isPolling" :element-loading-text="isPolling ? 'AI正在创作中，请稍候...' : '加载中...'">
+        <div class="studio-content" v-loading="isPolling" element-loading-text="AI正在创作中，请稍候...">
           
-          <div v-if="!chapter" class="empty-selection">
+          <div v-if="!chapter && !loading" class="empty-selection">
             <el-empty description="请从左侧选择一个章节开始制作" />
+          </div>
+
+          <div v-else-if="loading" class="studio-skeleton">
+            <el-skeleton :rows="10" animated />
           </div>
 
           <!-- 脚本看板 -->
@@ -50,9 +59,10 @@
             @toggle-view="toggleShotView"
             @produce-shot="handleProduceShot"
             @shot-command="handleShotCommand"
+            @update-prompt="handleUpdateShotPrompt"
           />
   
-          <div v-else class="empty-state">
+          <div v-else-if="!loading" class="empty-state">
             <el-empty description="当前章节暂无剧本">
               <el-button type="primary" @click="handleGenerateScript">生成 AI 剧本</el-button>
             </el-empty>
@@ -108,7 +118,7 @@ const {
   confirmProduceSingle, handleBatchProduceVideos, confirmProduceBatch,
   handlePrepareMaterials, handleRegenerateKeyframe, handleRegenerateLastFrame,
   handleRegenerateVideo, toggleShotView, goBack, handleShotCommand,
-  checkCompletion
+  checkCompletion, handleUpdateShotPrompt, taskStatus, taskStatistics, taskResult
 } = useMovieStudio()
 
 const handleDialogConfirm = () => {

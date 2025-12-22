@@ -70,6 +70,9 @@
             <div class="shot-header-row">
               <div class="shot-index">SHOT {{ shot.order_index }}</div>
               <div class="shot-menu">
+                 <el-button link size="small" @click="toggleEdit(shot.id)">
+                    <el-icon><Edit /></el-icon>
+                 </el-button>
                  <el-dropdown trigger="click" @command="(cmd) => $emit('shot-command', cmd, shot)">
                     <el-icon class="more-btn"><MoreFilled /></el-icon>
                     <template #dropdown>
@@ -84,10 +87,47 @@
             </div>
             <div class="shot-detail">
                <div class="shot-desc" :title="shot.visual_description">{{ shot.visual_description }}</div>
-               <div v-if="shot.dialogue" class="shot-dialogue">
-                   <el-icon><Mic /></el-icon> 
-                   <span class="dialogue-text">"{{ shot.dialogue }}"</span>
-               </div>
+                <div v-if="shot.dialogue" class="shot-dialogue">
+                    <el-icon><Mic /></el-icon> 
+                    <span class="dialogue-text">"{{ shot.dialogue }}"</span>
+                </div>
+             </div>
+
+             <div class="shot-references" v-if="getShotCharacters(shot).length > 0">
+                <div class="reference-avatars">
+                  <el-tooltip 
+                    v-for="char in getShotCharacters(shot)" 
+                    :key="char.id" 
+                    :content="char.name"
+                  >
+                    <el-avatar :size="20" :src="char.avatar_url">
+                      {{ char.name.charAt(0) }}
+                    </el-avatar>
+                  </el-tooltip>
+                </div>
+             </div>
+            
+            <div v-if="activeShotId === shot.id" class="prompt-editor" @click.stop>
+                <div class="editor-row">
+                    <span class="label">First:</span>
+                    <el-input 
+                        v-model="shot.first_frame_prompt" 
+                        type="textarea" 
+                        :rows="2" 
+                        size="small"
+                        @change="$emit('update-prompt', shot.id, 'first', shot.first_frame_prompt)"
+                    />
+                </div>
+                <div class="editor-row">
+                    <span class="label">Last:</span>
+                    <el-input 
+                        v-model="shot.last_frame_prompt" 
+                        type="textarea" 
+                        :rows="2" 
+                        size="small"
+                        @change="$emit('update-prompt', shot.id, 'last', shot.last_frame_prompt)"
+                    />
+                </div>
             </div>
           </div>
         </el-card>
@@ -97,7 +137,8 @@
 </template>
 
 <script setup>
-import { Picture, VideoPlay, MoreFilled, Mic, Loading } from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import { Picture, VideoPlay, MoreFilled, Mic, Loading, Edit } from '@element-plus/icons-vue'
 
 const props = defineProps({
   script: Object,
@@ -105,7 +146,20 @@ const props = defineProps({
   characters: Array
 })
 
-defineEmits(['toggle-view', 'produce-shot', 'shot-command'])
+defineEmits(['toggle-view', 'produce-shot', 'shot-command', 'update-prompt'])
+
+const activeShotId = ref(null)
+
+const toggleEdit = (id) => {
+  activeShotId.value = activeShotId.value === id ? null : id
+}
+
+const getShotCharacters = (shot) => {
+  return props.characters.filter(char => 
+    shot.visual_description.includes(char.name) || 
+    (shot.dialogue && shot.dialogue.includes(char.name))
+  )
+}
 
 const canProduceShot = (shot) => {
   if (!shot.first_frame_url) return false
@@ -355,5 +409,50 @@ const canProduceShot = (shot) => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.prompt-editor {
+  margin-top: 10px;
+  background: #f8f9fa;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.editor-row {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-row:last-child {
+  margin-bottom: 0;
+}
+
+.editor-row .label {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+.shot-references {
+  margin-top: 8px;
+  padding: 4px 0;
+  border-top: 1px dashed #ebeef5;
+}
+
+.reference-avatars {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reference-avatars :deep(.el-avatar) {
+  border: 1px solid #fff;
+  box-shadow: 0 0 2px rgba(0,0,0,0.1);
+  background-color: #409eff;
+  color: #fff;
+  font-size: 10px;
 }
 </style>

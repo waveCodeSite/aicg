@@ -147,11 +147,14 @@ class MovieCharacterService(SessionManagedService):
             )
             
             try:
+                # 增强提示词，让AI模型在图片左上角生成角色名称
+                enhanced_prompt = f"{prompt}. IMPORTANT: Include the text '{char.name}' in the top-left corner of the image, clearly visible and readable."
+                
                 # 4. 调用生图模型
-                logger.info(f"生成角色头像提示词: {prompt}")
+                logger.info(f"生成角色头像提示词: {enhanced_prompt}")
                 result = await retry_with_backoff(
                     lambda: image_provider.generate_image(
-                        prompt=prompt,
+                        prompt=enhanced_prompt,
                         model=model
                     )
                 )

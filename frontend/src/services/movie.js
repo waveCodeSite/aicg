@@ -1,4 +1,4 @@
-import { get, post } from './api'
+import { get, post, put } from './api'
 
 export const movieService = {
     /**
@@ -90,6 +90,13 @@ export const movieService = {
      */
     prepareChapterMaterials(chapterId) {
         return post(`/movie/chapters/${chapterId}/prepare-materials`)
+    },
+
+    /**
+     * 更新分镜信息
+     */
+    updateShot(shotId, data) {
+        return put(`/movie/shots/${shotId}`, data)
     }
 }
 

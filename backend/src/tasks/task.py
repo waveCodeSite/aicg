@@ -313,7 +313,11 @@ def synthesize_video(self, video_task_id: str):
 )
 def movie_generate_script(self, chapter_id: str, api_key_id: str, model: str = None):
     logger.info(f"Celery任务开始: movie_generate_script (chapter_id={chapter_id})")
-    result = run_async_task(script_engine_service.generate_script(chapter_id, api_key_id, model))
+    
+    async def on_progress(percent, msg):
+        self.update_state(state='PROGRESS', meta={'percent': percent, 'message': msg})
+        
+    result = run_async_task(script_engine_service.generate_script(chapter_id, api_key_id, model, on_progress=on_progress))
     logger.info(f"Celery任务完成: movie_generate_script")
     return {"script_id": str(result.id)}
 

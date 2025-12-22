@@ -12,7 +12,9 @@
           <el-image 
             :src="char.avatar_url" 
             class="char-avatar" 
-            @click="$emit('generate-avatar', char)"
+            :preview-src-list="char.avatar_url ? [char.avatar_url] : []"
+            preview-teleported
+            hide-on-click-modal
           >
             <template #placeholder>
               <div class="avatar-placeholder">
@@ -22,9 +24,20 @@
           </el-image>
           <div class="char-info">
             <div class="char-name">{{ char.name }}</div>
-            <el-tag size="small" :type="char.avatar_url ? 'success' : 'info'">
-              {{ char.avatar_url ? '已定妆' : '待定妆' }}
-            </el-tag>
+            <div class="char-status-row">
+              <el-tag size="small" :type="char.avatar_url ? 'success' : 'info'">
+                {{ char.avatar_url ? '已定妆' : '待定妆' }}
+              </el-tag>
+              <el-button 
+                type="primary" 
+                circle 
+                size="small" 
+                :icon="MagicStick" 
+                @click="$emit('generate-avatar', char)"
+                style="margin-left: 10px;"
+                title="定妆/重绘形象"
+              />
+            </div>
           </div>
         </div>
         <div class="char-desc text-truncate">{{ char.description }}</div>
@@ -108,6 +121,12 @@ defineEmits(['detect', 'generate-avatar'])
   font-weight: 600;
   font-size: 14px;
   color: #303133;
+  margin-bottom: 4px;
+}
+
+.char-status-row {
+  display: flex;
+  align-items: center;
 }
 
 .avatar-placeholder {

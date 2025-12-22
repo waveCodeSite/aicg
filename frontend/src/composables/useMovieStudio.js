@@ -43,7 +43,7 @@ export function useMovieStudio() {
         prompt: ''
     })
 
-    const { startPolling, isPolling } = useTaskPoller()
+    const { startPolling, isPolling, taskStatus, taskStatistics, terminateTask, taskResult } = useTaskPoller()
 
     const STYLE_PROMPTS = {
         cinematic: "Cinematic lighting, movie still, 8k, photorealistic, dramatic, highly detailed face",
@@ -142,15 +142,17 @@ export function useMovieStudio() {
 
         try {
             loadingModels.value = true
-            // 参考 DirectorEngine.vue 的实现，直接使用 type=image 过滤
-            const models = await api.get(`/api-keys/${newKeyId}/models?type=image`)
+            const isText = ['script', 'character'].includes(dialogMode.value)
+            const type = isText ? 'text' : 'image'
+
+            const models = await api.get(`/api-keys/${newKeyId}/models?type=${type}`)
             modelOptions.value = models || []
 
             const key = apiKeys.value.find(k => k.id === newKeyId)
             if (key && ['google', 'custom', 'siliconflow'].includes(key.provider.toLowerCase())) {
-                const geminiModel = 'gemini-2.0-flash-exp'
-                if (!modelOptions.value.includes(geminiModel)) {
-                    modelOptions.value.unshift(geminiModel)
+                const defaultModel = isText ? 'gemini-3-flash-preview' : 'gemini-3-pro-image-preview'
+                if (!modelOptions.value.includes(defaultModel)) {
+                    modelOptions.value.unshift(defaultModel)
                 }
             }
 
@@ -332,16 +334,31 @@ export function useMovieStudio() {
     const confirmProduceBatch = async () => {
         if (!genConfig.value.api_key_id) return
         showGenerateDialog.value = false
+        batchProducing.value = true
         try {
-            batchProducing.value = true
             const response = await movieService.batchProduceVideos(script.value.id, {
                 api_key_id: genConfig.value.api_key_id,
                 model: 'veo3.1-fast'
             })
-            ElMessage.success(response.message || '批量视频生产任务已启动')
-            await loadData(selectedChapterId.value)
-        } catch (err) { ElMessage.error('启动批量生产失败') }
-        finally { batchProducing.value = false }
+            if (response?.task_id) {
+                ElMessage.success('批量视频生产任务已启动, 正在排队...')
+                startPolling(response.task_id, async (result) => {
+                    ElMessage.success(`批量生产完成: 成功 ${result.success}, 失败 ${result.failed}`)
+                    loadData(selectedChapterId.value)
+                    batchProducing.value = false
+                }, (error) => {
+                    ElMessage.error(`任务失败: ${error.message}`)
+                    batchProducing.value = false
+                })
+            } else {
+                ElMessage.success(response.message || '批量视频生产任务已启动')
+                await loadData(selectedChapterId.value)
+                batchProducing.value = false
+            }
+        } catch (err) {
+            ElMessage.error('启动批量生产失败')
+            batchProducing.value = false
+        }
     }
 
     const handlePrepareMaterials = async () => {
@@ -401,6 +418,21 @@ export function useMovieStudio() {
         else router.push('/projects')
     }
 
+    const handleUpdateShotPrompt = async (shotId, type, content) => {
+        try {
+            const data = {}
+            if (type === 'first') data.first_frame_prompt = content
+            else if (type === 'last') data.last_frame_prompt = content
+            else return
+
+            await movieService.updateShot(shotId, data)
+            ElMessage.success('提示词更新成功')
+        } catch (error) {
+            console.error('Update shot prompt failed:', error)
+            ElMessage.error('更新失败')
+        }
+    }
+
     const handleShotCommand = (command, shot) => {
         selectedShotId.value = shot.id
         if (['regen-keyframe', 'regen-last-frame', 'regen-video'].includes(command)) {
@@ -444,7 +476,8 @@ export function useMovieStudio() {
         batchProducing, generatingAvatarId, selectedCharacter, showCastManager,
         showGenerateDialog, dialogMode, modelOptions, loadingModels,
         selectedShotId, showVideo, completionStatus, checkingCompletion,
-        genConfig, isPolling,
+        genConfig, isPolling, taskStatus, taskStatistics, taskResult,
+        terminateTask,
 
         // 计算属性
         canPrepareMaterials, allCharactersReady,
@@ -456,6 +489,6 @@ export function useMovieStudio() {
         confirmProduceSingle, handleBatchProduceVideos, confirmProduceBatch,
         handlePrepareMaterials, handleRegenerateKeyframe, handleRegenerateLastFrame,
         handleRegenerateVideo, toggleShotView, goBack, handleShotCommand,
-        checkCompletion
+        checkCompletion, handleUpdateShotPrompt, terminateTask
     }
 }

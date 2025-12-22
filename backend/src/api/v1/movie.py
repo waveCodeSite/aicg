@@ -15,7 +15,8 @@ from src.api.schemas.movie import (
     MovieScriptResponse, ScriptGenerateRequest, 
     MovieCharacterBase, CharacterExtractRequest,
     ShotProduceRequest, CharacterUpdateRequest,
-    CharacterGenerateRequest, KeyframeGenerateRequest
+    CharacterGenerateRequest, KeyframeGenerateRequest,
+    ShotUpdateRequest
 )
 from src.tasks.task import movie_produce_shot
 
@@ -194,6 +195,18 @@ async def regenerate_video(
     from src.tasks.task import movie_produce_shot
     task = movie_produce_shot.delay(shot_id, req.api_key_id, req.model, force=True)
     return {"task_id": task.id, "message": "视频重制任务已提交"}
+
+@router.put("/shots/{shot_id}", summary="更新分镜信息")
+async def update_shot(
+    shot_id: str,
+    req: ShotUpdateRequest,
+    movie_service: MovieService = Depends(lambda db=Depends(get_db): MovieService(db)),
+    current_user: User = Depends(get_current_user_required)
+):
+    updated_shot = await movie_service.update_shot(shot_id, req.dict(exclude_unset=True))
+    if not updated_shot:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    return updated_shot
 
 @router.get("/scripts/{script_id}/completion-status", summary="检查剧本完成度")
 async def check_script_completion(

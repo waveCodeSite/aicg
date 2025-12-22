@@ -8,6 +8,7 @@ export function useTaskPoller() {
   const pollInterval = ref(null)
   const taskResult = ref(null)
   const taskStatistics = ref(null)
+  const currentTaskId = ref(null)
 
   const stopPolling = () => {
     if (pollInterval.value) {
@@ -22,6 +23,7 @@ export function useTaskPoller() {
 
     stopPolling()
     isPolling.value = true
+    currentTaskId.value = taskId
     taskStatus.value = 'PENDING'
     taskStatistics.value = null
 
@@ -35,6 +37,9 @@ export function useTaskPoller() {
           taskStatistics.value = response.statistics
           stopPolling()
           if (onSuccess) onSuccess(response.statistics)
+        } else if (response.status === 'PROGRESS') {
+          // 汇报进度
+          taskResult.value = response.result
         } else if (response.status === 'FAILURE' || response.status === 'REVOKED') {
           stopPolling()
           // Pass the error result to the error handler
@@ -54,6 +59,19 @@ export function useTaskPoller() {
     }, 2000) // Poll every 2 seconds
   }
 
+  const terminateTask = async () => {
+    if (!currentTaskId.value) return
+    try {
+      await api.post(`/tasks/${currentTaskId.value}/terminate`)
+      stopPolling()
+      taskStatus.value = 'REVOKED'
+      ElMessage.info('任务已终止')
+    } catch (error) {
+      console.error('Failed to terminate task:', error)
+      ElMessage.error('终止任务失败')
+    }
+  }
+
   onUnmounted(() => {
     stopPolling()
   })
@@ -63,7 +81,9 @@ export function useTaskPoller() {
     isPolling,
     taskResult,
     taskStatistics,
+    currentTaskId,
     startPolling,
-    stopPolling
+    stopPolling,
+    terminateTask
   }
 }

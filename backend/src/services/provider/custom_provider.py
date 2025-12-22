@@ -64,6 +64,19 @@ class CustomProvider(BaseLLMProvider):
                 model=model or "Kwai-Kolors/Kolors", prompt=prompt, **kwargs
             )
 
+    async def generate_image_with_references(self, prompt: str, reference_images: List[str], model: str = None, **kwargs: Any):
+        """
+        支持参考图的生图接口
+        """
+        # 将 reference_images 作为 extra_body 参数传递给 OpenAI SDK
+        # 注意: 具体字段名需根据实际厂商 API 调整，这里作为 extra_body 传递
+        extra_body = kwargs.pop("extra_body", {})
+        if reference_images:
+            extra_body["image_prompts"] = reference_images # 适配部分厂商
+            extra_body["ref_images"] = reference_images    # 适配部分厂商
+        
+        return await self.generate_image(prompt, model, extra_body=extra_body, **kwargs)
+
     async def generate_audio(
         self, input_text: str, voice: str = "alloy", model: str = "tts-1", **kwargs: Any
     ):

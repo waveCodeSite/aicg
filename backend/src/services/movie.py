@@ -81,3 +81,19 @@ class MovieService(BaseService):
         await self.db_session.refresh(char)
         return char
 
+    async def update_shot(self, shot_id: str, data: dict) -> Optional[MovieShot]:
+        """
+        更新分镜信息
+        """
+        shot = await self.db_session.get(MovieShot, shot_id)
+        if not shot:
+            return None
+            
+        for key, value in data.items():
+            if hasattr(shot, key):
+                setattr(shot, key, value)
+                
+        await self.db_session.commit()
+        await self.db_session.refresh(shot)
+        return shot
+

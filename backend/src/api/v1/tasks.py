@@ -21,14 +21,11 @@ def safe_result(task_result: AsyncResult):
     将 Celery 返回的 result 转为可序列化结构。
     避免返回 Python Exception 导致 FastAPI 500。
     """
-    if not task_result.ready():
-        return None
-
-    result = task_result.result
     status = task_result.status
+    result = task_result.result
 
-    # SUCCESS – 直接返回正常结果
-    if status == "SUCCESS":
+    # SUCCESS or PROGRESS – 直接返回正常结果
+    if status in ["SUCCESS", "PROGRESS"]:
         return result
 
     # FAILURE – 将异常对象序列化
@@ -67,6 +64,21 @@ async def get_task_status(
         result=result,
         statistics=statistics
     )
+
+
+@router.post("/{task_id}/terminate")
+async def terminate_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user_required)
+):
+    """
+    终止正在运行的任务
+    """
+    task_result = AsyncResult(task_id, app=celery_app)
+    # terminate=True allows killing the worker process if it's currently executing the task
+    # signal='SIGTERM' is usually enough
+    task_result.revoke(terminate=True, signal='SIGTERM')
+    return {"message": "任务终止请求已发送"}
 
 
 __all__ = ["router"]

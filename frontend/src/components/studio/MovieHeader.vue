@@ -26,6 +26,38 @@
           </el-progress>
         </div>
 
+        <!-- 批量操作进度 -->
+        <div v-if="isPolling" class="batch-progress-container">
+           <div class="progress-row">
+             <el-progress 
+               :percentage="taskProgressPercentage" 
+               :indeterminate="!taskStatistics && !taskResult?.percent"
+               :status="taskStatus === 'SUCCESS' ? 'success' : ''"
+               style="width: 120px"
+               :stroke-width="18"
+               :text-inside="true"
+             />
+             <el-button 
+               link 
+               type="danger" 
+               size="small" 
+               class="cancel-btn" 
+               @click="$emit('terminate')"
+               icon="Close"
+               title="终止任务"
+             />
+           </div>
+           <span class="progress-label">
+             {{ progressTitle }}
+             <template v-if="taskStatistics">
+               ({{ taskStatistics.success + taskStatistics.failed }}/{{ taskStatistics.total }})
+             </template>
+             <template v-else-if="taskResult?.message">
+               : {{ taskResult.message }}
+             </template>
+           </span>
+        </div>
+
         <el-button 
           type="primary" 
           plain 
@@ -89,13 +121,37 @@ const props = defineProps({
   loadingKeyframes: Boolean,
   batchProducing: Boolean,
   allCharactersReady: Boolean,
-  loadingScript: Boolean
+  isPolling: Boolean,
+  taskStatus: String,
+  taskStatistics: Object,
+  taskResult: Object
 })
 
 const emit = defineEmits([
   'back', 'check-completion', 'prepare-materials', 'update-api-key',
-  'toggle-cast', 'generate-keyframes', 'produce-batch', 'generate-script'
+  'toggle-cast', 'generate-keyframes', 'produce-batch', 'generate-script',
+  'terminate'
 ])
+
+import { computed } from 'vue'
+import { Close } from '@element-plus/icons-vue'
+
+const taskProgressPercentage = computed(() => {
+  if (props.taskStatistics) {
+    return Math.round((props.taskStatistics.success + props.taskStatistics.failed) / props.taskStatistics.total * 100)
+  }
+  if (props.taskResult?.percent) {
+    return Math.round(props.taskResult.percent * 100)
+  }
+  return 100 
+})
+
+const progressTitle = computed(() => {
+  if (props.loadingScript) return '剧本生成'
+  if (props.loadingKeyframes) return '批量绘图'
+  if (props.batchProducing) return '视频制作'
+  return '任务执行'
+})
 
 const getChapterStatusType = (status) => {
   switch (status) {
@@ -155,5 +211,31 @@ const getChapterStatusLabel = (status) => {
 .progress-text {
   font-size: 10px;
   font-weight: bold;
+}
+
+.batch-progress-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 150px;
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cancel-btn {
+  padding: 0;
+  height: auto;
+}
+
+.progress-label {
+  font-size: 10px;
+  color: #909399;
+  white-space: nowrap;
 }
 </style>
