@@ -100,7 +100,7 @@ const routes = [
         props: true
       },
       {
-        path: ':projectId/chapters/:id/movie-studio',
+        path: '/chapters/:chapterId/movie-studio',
         name: 'MovieStudio',
         component: () => import('@/views/studio/MovieStudio.vue'),
         meta: { title: '电影工作室' },

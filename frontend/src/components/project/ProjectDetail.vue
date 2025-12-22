@@ -242,6 +242,7 @@
   import { useRouter } from 'vue-router'
   const router = useRouter()
   import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+  import { ElMessage } from 'element-plus'
   import { useProjectsStore } from '@/stores/projects'
   import { useProject } from '@/composables/useProject'
   import ProjectEditor from '@/components/project/ProjectEditor.vue'
@@ -338,8 +339,7 @@
         router.push({
           name: 'MovieStudio',
           params: { 
-            projectId: props.projectId,
-            id: chapters[0].id // 暂时选第一章
+            chapterId: chapters[0].id // 使用 chapterId 参数
           }
         })
       } else {

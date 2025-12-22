@@ -76,6 +76,20 @@ export const movieService = {
      */
     regenerateVideo(shotId, data) {
         return post(`/movie/shots/${shotId}/regenerate-video`, data)
+    },
+
+    /**
+     * 检查剧本完成度
+     */
+    checkScriptCompletion(scriptId) {
+        return get(`/movie/scripts/${scriptId}/completion-status`)
+    },
+
+    /**
+     * 准备章节素材（推进状态）
+     */
+    prepareChapterMaterials(chapterId) {
+        return post(`/movie/chapters/${chapterId}/prepare-materials`)
     }
 }
 
