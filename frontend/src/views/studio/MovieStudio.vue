@@ -35,6 +35,7 @@
         @generate-keyframes="handleGenerateKeyframes"
         @produce-batch="handleBatchProduceVideos"
         @generate-script="handleGenerateScript"
+        @generate-video="handleGenerateVideo"
         @terminate="terminateTask"
       />
 
@@ -121,7 +122,8 @@ const {
   confirmProduceSingle, handleBatchProduceVideos, confirmProduceBatch,
   handlePrepareMaterials, handleRegenerateKeyframe, handleRegenerateLastFrame,
   handleRegenerateVideo, toggleShotView, goBack, handleShotCommand,
-  checkCompletion, handleUpdateShotPrompt, taskStatus, taskStatistics, taskResult
+  checkCompletion, handleUpdateShotPrompt, taskStatus, taskStatistics, taskResult,
+  handleGenerateVideo, confirmGenerateVideo
 } = useMovieStudio()
 
 const handleDialogConfirm = () => {
@@ -130,6 +132,7 @@ const handleDialogConfirm = () => {
   else if (dialogMode.value === 'keyframes') confirmKeyframes()
   else if (dialogMode.value === 'produce-single') confirmProduceSingle()
   else if (dialogMode.value === 'produce-batch') confirmProduceBatch()
+  else if (dialogMode.value === 'generate-video') confirmGenerateVideo()
   else if (dialogMode.value === 'batch-avatars') confirmBatchGenerateAvatars()
   else if (dialogMode.value === 'regen-keyframe') handleRegenerateKeyframe()
   else if (dialogMode.value === 'regen-last-frame') handleRegenerateLastFrame()

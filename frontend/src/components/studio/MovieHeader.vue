@@ -98,6 +98,7 @@
         </el-button>
         <el-button type="success" icon="Picture" @click="$emit('generate-keyframes')" :disabled="!script" :loading="loadingKeyframes" size="small">批量绘图</el-button>
         <el-button type="warning" icon="VideoPlay" @click="$emit('produce-batch')" :disabled="!script || !allCharactersReady" :loading="batchProducing" size="small">批量视频</el-button>
+        <el-button type="danger" icon="Film" @click="$emit('generate-video')" :disabled="!completionStatus?.is_complete" size="small">生成视频</el-button>
         <el-button type="primary" @click="$emit('generate-script')" :loading="loadingScript" size="small">
           {{ script ? '重制剧本' : '生成 AI 剧本' }}
         </el-button>
@@ -107,7 +108,7 @@
 </template>
 
 <script setup>
-import { ArrowLeft, Refresh, Check, Picture, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, Check, Picture, VideoPlay, Film } from '@element-plus/icons-vue'
 
 const props = defineProps({
   chapter: Object,
@@ -130,7 +131,7 @@ const props = defineProps({
 const emit = defineEmits([
   'back', 'check-completion', 'prepare-materials', 'update-api-key',
   'toggle-cast', 'generate-keyframes', 'produce-batch', 'generate-script',
-  'terminate'
+  'terminate', 'generate-video'
 ])
 
 import { computed } from 'vue'

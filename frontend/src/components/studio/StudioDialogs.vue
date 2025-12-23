@@ -56,6 +56,32 @@
             <el-option v-for="model in modelOptions" :key="model" :label="model" :value="model" />
           </el-select>
         </el-form-item>
+
+        <!-- BGM选择 (仅视频生成时显示) -->
+        <el-form-item label="背景音乐" v-if="mode === 'generate-video'">
+          <el-select 
+            :model-value="genConfig.background_id" 
+            @update:model-value="(val) => $emit('update:genConfig', { ...genConfig, background_id: val })"
+            placeholder="选择BGM(可选)" 
+            clearable
+            style="width: 100%"
+          >
+            <el-option label="无背景音乐" :value="null" />
+            <!-- TODO: 从BGM列表加载 -->
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="BGM音量" v-if="mode === 'generate-video' && genConfig.background_id">
+          <el-slider 
+            :model-value="genConfig.bgm_volume || 0.15" 
+            @update:model-value="(val) => $emit('update:genConfig', { ...genConfig, bgm_volume: val })"
+            :min="0" 
+            :max="1" 
+            :step="0.05"
+            show-input
+            :input-size="'small'"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -89,6 +115,7 @@ const getDialogTitle = () => {
     'keyframes': '批量生成首尾帧图',
     'produce-single': '生成分镜视频',
     'produce-batch': '批量生成视频',
+    'generate-video': '生成章节视频',
     'regen-keyframe': '生成/重置首帧',
     'regen-last-frame': '生成/重置尾帧',
     'regen-video': '重新生成视频',
@@ -104,6 +131,7 @@ const getConfirmText = () => {
     'keyframes': '开始批量绘图',
     'produce-single': '开始制作',
     'produce-batch': '开始制作',
+    'generate-video': '开始生成',
     'regen-keyframe': '开始制作',
     'regen-last-frame': '开始制作',
     'regen-video': '开始制作',
