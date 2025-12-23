@@ -166,7 +166,7 @@ async def produce_shot(
     提交镜头的视频生产任务到 Celery
     """
     from src.tasks.movie import movie_produce_shot
-    task = movie_produce_shot.delay(shot_id, req.api_key_id, req.model)
+    task = movie_produce_shot.delay(shot_id, req.api_key_id, req.model,force=True)
     return {"task_id": task.id, "message": "视频生产任务已提交"}
 
 @router.post("/scripts/{script_id}/batch-produce", summary="批量生产剧本下分镜视频")

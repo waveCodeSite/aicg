@@ -80,7 +80,13 @@ async def _sync_one_shot_worker(
                     shot.last_error = "Vector Engine 返回的任务已完成但缺少视频链接"
             elif status == "failed":
                 shot.status = "failed"
-                shot.last_error = status_resp.get("error") or "Vector Engine 任务失败"
+                error_info = status_resp.get("error")
+                # 将error转换为字符串,因为last_error字段是Text类型
+                if isinstance(error_info, dict):
+                    error_message = error_info.get("message", str(error_info))
+                else:
+                    error_message = str(error_info) if error_info else "Vector Engine 任务失败"
+                shot.last_error = error_message
             
             return True
         except Exception as e:
@@ -105,15 +111,16 @@ async def _produce_one_shot_worker(
     """
     async with semaphore:
         try:
-            # 1. 生成提示词 (如果需要)
-            if not shot.video_prompt:
-                shot.video_prompt = await service_instance._polish_prompt_to_english_with_provider(
-                    llm_provider,
-                    shot.visual_description,
-                    shot.camera_movement,
-                    shot.performance_prompt,
-                    shot.dialogue
-                )
+            # 1. 生成提示词 
+            scene_original_text = shot.scene.description if shot.scene and shot.scene.description else None
+            shot.video_prompt = await service_instance.generate_video_prompt(
+                llm_provider,
+                shot.visual_description,
+                shot.camera_movement,
+                shot.performance_prompt,
+                shot.dialogue,
+                scene_original_text  # 添加场景原文
+            )
 
             # 2. 预签名图片 URL (首帧 + 尾帧 + 角色参考)
             all_raw_images = [shot.first_frame_url]
@@ -177,46 +184,122 @@ class MovieProductionService(BaseService):
             logger.error(f"Failed to convert image to base64: {e}")
             return image_url
 
-    async def _polish_prompt_to_english_with_provider(self, llm_provider, visual_desc: str, camera_movement: Optional[str] = None, performance_prompt: Optional[str] = None, dialogue: Optional[str] = None) -> str:
+    async def generate_video_prompt(self, llm_provider, visual_desc: str, camera_movement: Optional[str] = None, performance_prompt: Optional[str] = None, dialogue: Optional[str] = None, scene_original_text: Optional[str] = None) -> str:
         """
-        内部逻辑：使用已创建的 Provider 优化提示词
-        """
-        system_prompt = (
-            "You are a professional AI video prompt engineer. Translate and polish the given scene description into a high-quality, detailed English prompt for video generation.\n"
-            "CRITICAL: If 'Dialogue' is provided, you MUST append a specific instruction at the end of the prompt to render bilingual subtitles at the bottom of the video.\n"
-            "Avoid outputting anything other than the prompt itself."
-            ""
-        )
-        user_content = f"Visual Description: {visual_desc}\nCamera Movement: {camera_movement or 'None'}\nPerformance/Action: {performance_prompt or 'None'}\nDialogue: {dialogue or 'None'}"
+        使用真实电影风格的专业提示词模板生成视频提示词
+        失败直接抛出异常,不做降级处理
         
-        try:
-            logger.info("创建提示词，调用 LLM Provider")
-            response = await llm_provider.completions(
-                model="gemini-3-flash-preview",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ]
-            )
-            polished_prompt = response.choices[0].message.content.strip()
-                
-            return polished_prompt
-        except Exception as e:
-            logger.error(f"Prompt polishing failed: {e}")
-            return f"{visual_desc}. {camera_movement or ''}. {performance_prompt or ''}"
+        Args:
+            scene_original_text: 场景的小说原文,提供更丰富的上下文
+        """
+        # 构建用户内容
+        user_parts = []
+        
+        # 如果有小说原文,优先展示
+        if scene_original_text:
+            user_parts.append(f"镜头的简介: {scene_original_text}")
+            user_parts.append("---")
+        
+        user_parts.append(f"视觉描述: {visual_desc}")
+        if camera_movement:
+            user_parts.append(f"镜头运动: {camera_movement}")
+        if performance_prompt:
+            user_parts.append(f"表演动作: {performance_prompt}")
+        if dialogue:
+            user_parts.append(f"对白: {dialogue}")
+        
+        user_content = "\n".join(user_parts)
+        
+        system_prompt = """你是一名专注于【真实电影风格】的 AI 视频提示词生成器，
+你的审美标准来源于真实电影拍摄，而不是插画、CG 或概念艺术。
 
-    async def _polish_prompt_to_english(self, api_key_id: str, owner_id: str, visual_desc: str, camera_movement: Optional[str] = None, performance_prompt: Optional[str] = None, dialogue: Optional[str] = None) -> str:
-        """
-        [DEPRECATED] 兼容性方法，内部转调 _polish_prompt_to_english_with_provider
-        """
-        api_key_service = APIKeyService(self.db_session)
-        api_key = await api_key_service.get_api_key_by_id(api_key_id, owner_id)
-        llm_provider = ProviderFactory.create(
-            provider=api_key.provider,
-            api_key=api_key.get_api_key(),
-            base_url=api_key.base_url
+【核心创作原则（必须严格遵守）】
+1. 全部使用【中文】输出。
+2. 只输出【最终用于 AI 视频生成的提示词】，不要解释、不要分析。
+3. 输出必须是【真实电影级视频描述】，而不是图片或概念设定。
+4. 所有画面应符合"真实摄影机 + 真实光学 + 真实运动"的逻辑。
+5. 禁止出现明显偏向插画或 CG 的词汇，如"概念艺术、超现实、插画风、动漫感、游戏画面"等。
+6. 音频描述必须使用【自然语言描述听感】，禁止使用任何技术参数（采样率、声道、BPM 等）。
+7. 如果某项用户输入为 None，需要你根据真实电影逻辑合理补全，而不是原样输出。
+
+【用户提供的镜头参考信息】
+{user_content}
+
+---
+
+【生成目标】
+基于用户给出的视觉描述、镜头运动、表演动作与对白，
+生成一段【写实、克制、可信的电影级 AI 视频提示词】，
+让画面看起来像真实摄制组拍摄的电影片段。
+
+---
+
+【输出结构（严格按顺序生成）】
+
+1. 语言与模式声明  
+   - 明确说明：使用中文生成视频画面与音频描述
+
+2. 真实电影风格与情绪基调  
+   - 说明这是写实电影风格（Realistic / Live-action）
+   - 情绪基调必须克制、可信，不浮夸
+
+3. 镜头起始状态（第一帧画面）  
+   - 明确镜头景别（远景 / 中景 / 特写等）
+   - 说明摄影机位置、高度、观看角度
+   - 符合真实摄影可能性
+
+4. 镜头运动与时间推进  
+   - 根据 Camera Movement 转化为真实可执行的镜头运动
+   - 使用"缓慢推进、轻微摇动、自然跟拍"等真实摄影语言
+   - 避免不可能的镜头运动
+
+5. 表演与动作（以真实表演为准）  
+   - 角色动作自然、克制
+   - 注重微表情、身体反应，而不是夸张动作
+   - 若包含对白，说明说话时的情绪与状态
+
+6. 场景、光线与环境  
+   - 光源应合理（自然光、环境光、城市灯光等）
+   - 描述真实空气感：尘埃、雾气、逆光、阴影
+   - 环境是"正在被使用的真实空间"，而不是空洞背景
+
+7. 音频与现场声音  
+   - 以环境音为主，音乐作为氛围补充
+   - 声音应有空间感、距离感
+   - 如果有对白，声音应自然融入环境
+
+8. 结尾画面状态  
+   - 镜头如何停下或切断
+   - 是否自然停顿、渐暗或保持画面
+
+---
+
+【整体风格约束】
+- 语言像导演给摄影指导和演员的拍摄说明
+- 画面追求"可信度"而非"炫技"
+- 宁可克制，也不要浮夸
+- 默认这是用于【AI 电影 / 剧情视频 / 写实短片】生成
+
+现在开始生成最终的视频提示词。"""
+        
+        # 替换user_content占位符
+        system_prompt = system_prompt.replace("{user_content}", user_content)
+        
+        logger.info("🎬 使用真实电影风格模板生成视频提示词")
+        response = await llm_provider.completions(
+            model="gemini-3-flash-preview",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "请生成视频提示词"},
+            ]
         )
-        return await self._polish_prompt_to_english_with_provider(llm_provider, visual_desc, camera_movement, performance_prompt, dialogue)
+        polished_prompt = response.choices[0].message.content.strip()
+        
+        logger.info(f"✅ 生成的电影级视频提示词: {polished_prompt[:200]}...")
+        return polished_prompt
+
+
+
 
     async def produce_shot_video(self, shot_id: str, api_key_id: str, model: str = "veo_3_1-fast", force: bool = False) -> str:
         """

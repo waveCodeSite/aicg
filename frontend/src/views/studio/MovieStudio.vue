@@ -30,12 +30,13 @@
         @back="goBack"
         @check-completion="checkCompletion"
         @prepare-materials="handlePrepareMaterials"
-        @update-api-key="(val) => { genConfig.api_key_id = val; fetchModels() }"
+        @update-api-key="handleUpdateApiKey"
         @toggle-cast="showCastManager = !showCastManager"
         @generate-keyframes="handleGenerateKeyframes"
         @produce-batch="handleBatchProduceVideos"
         @generate-script="handleGenerateScript"
         @generate-video="handleGenerateVideo"
+        @refresh-data="() => loadData(selectedChapterId)"
         @terminate="terminateTask"
       />
 
@@ -115,7 +116,7 @@ const {
   showVideo, completionStatus, checkingCompletion,
   genConfig, isPolling,
   canPrepareMaterials, allCharactersReady,
-  fetchModels, handleGenerateScript, confirmGenerate,
+  fetchModels, handleUpdateApiKey, handleGenerateScript, confirmGenerate,
   handleDetectCharacters, confirmExtractCharacters, handleGenerateAvatar, confirmAvatar,
   handleDeleteCharacter, handleBatchGenerateAvatars, confirmBatchGenerateAvatars,
   handleGenerateKeyframes, confirmKeyframes, handleProduceShot,

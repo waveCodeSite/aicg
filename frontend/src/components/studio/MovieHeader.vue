@@ -71,6 +71,18 @@
         </el-button>
 
         <el-button 
+          type="info" 
+          plain 
+          icon="Refresh" 
+          @click="$emit('refresh-data')" 
+          v-if="script"
+          size="small"
+          title="手动刷新数据"
+        >
+          刷新
+        </el-button>
+
+        <el-button 
           type="success" 
           icon="Check" 
           @click="$emit('prepare-materials')" 
@@ -131,7 +143,7 @@ const props = defineProps({
 const emit = defineEmits([
   'back', 'check-completion', 'prepare-materials', 'update-api-key',
   'toggle-cast', 'generate-keyframes', 'produce-batch', 'generate-script',
-  'terminate', 'generate-video'
+  'terminate', 'generate-video', 'refresh-data'
 ])
 
 import { computed } from 'vue'

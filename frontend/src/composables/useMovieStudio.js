@@ -168,6 +168,14 @@ export function useMovieStudio() {
         }
     }
 
+    const handleUpdateApiKey = (val) => {
+        if (genConfig.value) {
+            genConfig.value.api_key_id = val
+            fetchModels()
+        }
+    }
+
+
     const handleGenerateScript = () => {
         if (!selectedChapterId.value) return
         dialogMode.value = 'script'
@@ -538,15 +546,20 @@ export function useMovieStudio() {
 
     const handleRegenerateVideo = async () => {
         const shotId = selectedShotId.value
-        showGenerateDialog.value = false
+        if (!genConfig.value.api_key_id) {
+            ElMessage.warning('请先选择API Key')
+            return
+        }
+
         try {
             await movieService.regenerateVideo(shotId, {
-                api_key_id: genConfig.value.api_key_id,
-                model: genConfig.value.model
+                api_key_id: genConfig.value.api_key_id
             })
             ElMessage.success('视频重制任务已提交')
             loadData(selectedChapterId.value)
-        } catch (err) { ElMessage.error('失败') }
+        } catch (err) {
+            ElMessage.error('视频重制失败')
+        }
     }
 
     const toggleShotView = (shotId, visible) => {
@@ -575,7 +588,10 @@ export function useMovieStudio() {
 
     const handleShotCommand = (command, shot) => {
         selectedShotId.value = shot.id
-        if (['regen-keyframe', 'regen-last-frame', 'regen-video'].includes(command)) {
+        if (command === 'regen-video') {
+            // 直接执行,不显示弹窗
+            handleRegenerateVideo()
+        } else if (['regen-keyframe', 'regen-last-frame'].includes(command)) {
             dialogMode.value = command
             showGenerateDialog.value = true
         } else if (command === 'switch-video') {
@@ -639,7 +655,7 @@ export function useMovieStudio() {
         canPrepareMaterials, allCharactersReady,
 
         // 方法
-        loadData, fetchModels, handleGenerateScript, confirmGenerate,
+        loadData, fetchModels, handleUpdateApiKey, handleGenerateScript, confirmGenerate,
         handleDetectCharacters, confirmExtractCharacters, handleGenerateAvatar, confirmAvatar,
         handleDeleteCharacter, handleBatchGenerateAvatars, confirmBatchGenerateAvatars,
         handleGenerateKeyframes, confirmKeyframes, handleProduceShot,

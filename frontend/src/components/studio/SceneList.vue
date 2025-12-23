@@ -211,7 +211,7 @@
                       <el-icon><Picture /></el-icon>
                       重新生成尾帧
                     </el-dropdown-item>
-                    <el-dropdown-item command="regen-video" divided :disabled="!shot.video_url">
+                    <el-dropdown-item command="regen-video" divided :disabled="!shot.video_url || shot.status === 'processing'">
                       <el-icon><VideoPlay /></el-icon>
                       重新生成视频
                     </el-dropdown-item>
