@@ -202,18 +202,51 @@ export function useMovieStudio() {
         }
     }
 
-    const detectCharacters = async () => {
-        if (!chapter.value?.project_id) return
+    const handleDetectCharacters = () => {
+        if (!script.value) return
+        dialogMode.value = 'character'
+        showGenerateDialog.value = true
+        if (genConfig.value.api_key_id) fetchModels()
+    }
+
+    const confirmExtractCharacters = async () => {
+        if (!genConfig.value.api_key_id) {
+            ElMessage.warning('请选择 API Key')
+            return
+        }
+        if (!script.value?.id) return
+
+        showGenerateDialog.value = false
         extractingCharacters.value = true
         try {
-            await movieService.extractCharacters(chapter.value.project_id)
-            characters.value = await movieService.getCharacters(chapter.value.project_id)
-            ElMessage.success('角色提取完成')
+            const response = await movieService.extractCharacters(script.value.id, {
+                api_key_id: genConfig.value.api_key_id,
+                model: genConfig.value.model
+            })
+
+            if (response?.task_id) {
+                ElMessage.success('角色提取任务已提交...')
+                startPolling(response.task_id, async () => {
+                    ElMessage.success('角色提取完成')
+                    if (chapter.value?.project_id) {
+                        characters.value = await movieService.getCharacters(chapter.value.project_id)
+                    }
+                    extractingCharacters.value = false
+                }, (error) => {
+                    ElMessage.error(`提取失败: ${error.message}`)
+                    extractingCharacters.value = false
+                })
+            } else {
+                // Initial implementation might have been sync if no task_id, but backend uses Celery
+                // Keep compatibility if it returns chars directly (unlikely based on backend code)
+                if (chapter.value?.project_id) {
+                    characters.value = await movieService.getCharacters(chapter.value.project_id)
+                }
+                extractingCharacters.value = false
+            }
         } catch (e) {
             ElMessage.error('角色提取失败')
-        } finally {
             extractingCharacters.value = false
-            showGenerateDialog.value = false
         }
     }
 
@@ -490,7 +523,7 @@ export function useMovieStudio() {
 
         // 方法
         loadData, fetchModels, handleGenerateScript, confirmGenerate,
-        detectCharacters, handleGenerateAvatar, confirmAvatar,
+        handleDetectCharacters, confirmExtractCharacters, handleGenerateAvatar, confirmAvatar,
         handleGenerateKeyframes, confirmKeyframes, handleProduceShot,
         confirmProduceSingle, handleBatchProduceVideos, confirmProduceBatch,
         handlePrepareMaterials, handleRegenerateKeyframe, handleRegenerateLastFrame,

@@ -75,7 +75,7 @@
             v-if="showCastManager"
             :characters="characters"
             :extracting="extractingCharacters"
-            @detect="detectCharacters"
+            @detect="handleDetectCharacters"
             @generate-avatar="handleGenerateAvatar"
           />
         </transition>
@@ -113,7 +113,7 @@ const {
   genConfig, isPolling,
   canPrepareMaterials, allCharactersReady,
   fetchModels, handleGenerateScript, confirmGenerate,
-  detectCharacters, handleGenerateAvatar, confirmAvatar,
+  handleDetectCharacters, confirmExtractCharacters, handleGenerateAvatar, confirmAvatar,
   handleGenerateKeyframes, confirmKeyframes, handleProduceShot,
   confirmProduceSingle, handleBatchProduceVideos, confirmProduceBatch,
   handlePrepareMaterials, handleRegenerateKeyframe, handleRegenerateLastFrame,
@@ -123,7 +123,7 @@ const {
 
 const handleDialogConfirm = () => {
   if (dialogMode.value === 'script') confirmGenerate()
-  else if (dialogMode.value === 'character') detectCharacters()
+  else if (dialogMode.value === 'character') confirmExtractCharacters()
   else if (dialogMode.value === 'keyframes') confirmKeyframes()
   else if (dialogMode.value === 'produce-single') confirmProduceSingle()
   else if (dialogMode.value === 'produce-batch') confirmProduceBatch()

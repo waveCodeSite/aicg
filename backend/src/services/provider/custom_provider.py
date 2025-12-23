@@ -5,7 +5,10 @@ import json
 from typing import Any, Dict, List
 from openai import AsyncOpenAI
 
+from src.core.logging import get_logger
 from src.services.provider.base import BaseLLMProvider
+
+logger = get_logger(__name__)
 
 
 class CustomProvider(BaseLLMProvider):
@@ -184,6 +187,7 @@ class CustomProvider(BaseLLMProvider):
             "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
         }
+        logger.info(f"Gemini 生成图像请求负载: {json.dumps(payload)}")
 
         async with self.semaphore:  # 控制最大并发
             async with aiohttp.ClientSession() as session:
@@ -197,3 +201,39 @@ class CustomProvider(BaseLLMProvider):
                         
                     result = await resp.text()
                     return json.loads(result)
+
+    def _wrap_gemini_response(self, gemini_response: dict):
+        """
+        将 Gemini 图像生成响应转换为 OpenAI 格式
+        Gemini 返回: {"candidates": [{"content": {"parts": [{"inlineData": {...}}]}}]}
+        OpenAI 格式: {"data": [{"url": "data:image/jpeg;base64,..."}]}
+        """
+        try:
+            # 提取第一个候选结果
+            candidate = gemini_response.get("candidates", [{}])[0]
+            content = candidate.get("content", {})
+            parts = content.get("parts", [])
+            
+            # 查找图像数据部分
+            for part in parts:
+                if "inlineData" in part:
+                    inline_data = part["inlineData"]
+                    mime_type = inline_data.get("mimeType", "image/jpeg")
+                    base64_data = inline_data.get("data", "")
+                    
+                    # 构造 data URL
+                    data_url = f"data:{mime_type};base64,{base64_data}"
+                    
+                    # 返回 OpenAI 兼容格式
+                    from types import SimpleNamespace
+                    return SimpleNamespace(
+                        data=[SimpleNamespace(url=data_url)]
+                    )
+            
+            # 如果没找到图像数据
+            raise ValueError("Gemini 响应中未找到图像数据")
+            
+        except Exception as e:
+            logger.error(f"解析 Gemini 响应失败: {e}, 原始响应: {gemini_response}")
+            raise ValueError(f"无法解析 Gemini 图像响应: {e}")
+

@@ -161,11 +161,27 @@ class MovieCharacterService(BaseService):
             image_url = image_data.url
             
             # 5. 下载图片并上传 MinIO
-            async with aiohttp.ClientSession() as http_session:
-                async with http_session.get(image_url) as resp:
-                    if resp.status != 200:
-                        raise Exception(f"下载图片失败: {resp.status}")
-                    content = await resp.read()
+            if image_url.startswith("data:"):
+                # 处理 data URL (Gemini 返回格式)
+                import base64
+                import re
+                
+                # 解析 data URL: data:image/jpeg;base64,/9j/4AAQ...
+                match = re.match(r'data:([^;]+);base64,(.+)', image_url)
+                if not match:
+                    raise ValueError(f"无效的 data URL 格式: {image_url[:100]}")
+                
+                mime_type = match.group(1)
+                base64_data = match.group(2)
+                content = base64.b64decode(base64_data)
+                logger.info(f"从 data URL 解码图片, MIME 类型: {mime_type}, 大小: {len(content)} bytes")
+            else:
+                # 处理 HTTP URL (其他提供商)
+                async with aiohttp.ClientSession() as http_session:
+                    async with http_session.get(image_url) as resp:
+                        if resp.status != 200:
+                            raise Exception(f"下载图片失败: {resp.status}")
+                        content = await resp.read()
 
             storage_client = await get_storage_client()
             file_id = str(uuid.uuid4())
@@ -198,3 +214,42 @@ class MovieCharacterService(BaseService):
             raise
 
 __all__ = ["MovieCharacterService"]
+
+if __name__ == "__main__":
+    
+    # 测试代码
+    import asyncio
+    
+    prompt = """
+    TRIPLE-VIEW CHARACTER SHEET: front, 90° side, back views of cyberpunk hacker "Kitsune", year 2089.
+
+Details:
+- Japanese female, 22, augmented with neon cyan neural ports behind ears
+- Outfit: asymmetrical leather jacket, holographic crop top, cargo pants with utility straps
+- Hair: short silver bob with glowing pink streaks
+- Accessories: AR glasses, data-glove on right hand, katana sheath on back
+
+CONSISTENCY LOCK:
+- Same port positions and glow intensity
+- Jacket pattern must align perfectly
+- Hair length and streak position identical
+- Glasses frame style consistent
+
+Render: Unreal Engine 5, photorealistic, studio lighting, black background. --ar 16:9
+    """
+    
+    # 测试角色头像生成
+    async def test_generate_avatar():
+        from src.core.database import get_async_db
+        async with get_async_db() as session:
+            service = MovieCharacterService(session)
+            url = await service.generate_character_avatar(
+                character_id="8341a465-d0ae-4c77-93d9-e0d799de1568",
+                api_key_id="457f4337-8f54-4749-a2d6-78e1febf9028",
+                model="gemini-3-pro-image-preview",
+                # prompt="Cinematic lighting, movie still, 8k, photorealistic, dramatic, highly detailed face, 赛博朋克世界观下,男性，约35岁，眼神深邃且带着长期的疲惫。面部有轻微的擦伤。身着深灰色战术外骨骼装甲，带有明显的战斗损耗痕迹。短发凌乱，体型健硕但并不夸张，展现出敏捷与力量感。",
+                prompt=prompt,
+                style="cinematic"
+            )
+            print("Generated Avatar URL:", url)
+    asyncio.run(test_generate_avatar())
