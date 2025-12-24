@@ -51,6 +51,7 @@
             :scenes="sceneWorkflow.script.value?.scenes || []"
             :extracting="sceneWorkflow.extracting.value"
             :can-extract="canExtractScenes"
+            :api-keys="apiKeys"
             @extract-scenes="handleExtractScenes"
           />
 
@@ -70,6 +71,7 @@
             :shots="shotWorkflow.allShots.value"
             :generating="shotWorkflow.generatingKeyframes.value"
             :can-generate="canGenerateKeyframes"
+            :api-keys="apiKeys"
             @generate-keyframes="handleGenerateKeyframes"
           />
 
@@ -81,6 +83,7 @@
             :generating="transitionWorkflow.generating.value"
             :can-create="canCreateTransitions"
             :can-generate="canGenerateTransitionVideos"
+            :api-keys="apiKeys"
             @create-transitions="handleCreateTransitions"
             @generate-videos="handleGenerateTransitionVideos"
           />

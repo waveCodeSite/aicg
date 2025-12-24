@@ -91,7 +91,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/services/api'
 
 const props = defineProps({
@@ -152,6 +152,33 @@ watch(() => formData.value.apiKeyId, async (newKeyId) => {
 })
 
 const handleExtractClick = () => {
+  // 检查是否已有场景数据
+  const hasScenes = props.scenes && props.scenes.length > 0
+  
+  if (hasScenes) {
+    // 显示警告对话框
+    ElMessageBox.confirm(
+      '重新提取场景将删除所有现有场景及其关联的分镜、关键帧数据。此操作不可撤销！',
+      '危险操作警告',
+      {
+        confirmButtonText: '确认提取',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: true
+      }
+    ).then(() => {
+      // 用户确认后打开对话框
+      openDialog()
+    }).catch(() => {
+      // 用户取消
+    })
+  } else {
+    // 没有数据，直接打开对话框
+    openDialog()
+  }
+}
+
+const openDialog = () => {
   formData.value = {
     apiKeyId: props.apiKeys[0]?.id || '',
     model: ''
