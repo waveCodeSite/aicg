@@ -322,36 +322,56 @@ class MovieCharacterService(BaseService):
             )
             
             image_data = result.data[0]
-            image_url = image_data.url
             
-            # 5. 下载图片并上传 MinIO
-            if image_url.startswith("data:"):
-                # 处理 data URL (Gemini 返回格式)
+            # 5. 处理图片数据 (支持两种返回格式)
+            # 优先使用 b64_json (Gemini 新格式), 否则使用 url
+            if hasattr(image_data, 'b64_json') and image_data.b64_json:
+                # Gemini 返回 base64 数据
+                import base64
+                base64_data = image_data.b64_json
+                mime_type = getattr(image_data, 'mime', 'image/png')
+                
+                logger.info(f"使用 b64_json 格式, MIME: {mime_type}, 数据长度: {len(base64_data)}")
+                
+                # 解码 base64
+                image_bytes = base64.b64decode(base64_data)
+            elif hasattr(image_data, 'url') and image_data.url:
+                # 处理 URL 格式 (其他 Provider)
                 import base64
                 import re
                 
-                # 解析 data URL: data:image/jpeg;base64,/9j/4AAQ...
-                match = re.match(r'data:([^;]+);base64,(.+)', image_url)
-                if not match:
-                    raise ValueError(f"无效的 data URL 格式: {image_url[:100]}")
+                image_url = image_data.url
+                logger.info(f"使用 url 格式, URL前50字符: {image_url[:50]}")
                 
-                mime_type = match.group(1)
-                base64_data = match.group(2)
-                content = base64.b64decode(base64_data)
-                logger.info(f"从 data URL 解码图片, MIME 类型: {mime_type}, 大小: {len(content)} bytes")
+                if image_url.startswith("data:"):
+                    # 解析 data URL: data:image/jpeg;base64,/9j/4AAQ...
+                    match = re.match(r'data:([^;]+);base64,(.+)', image_url)
+                    if not match:
+                        raise ValueError(f"无效的 data URL 格式: {image_url[:100]}")
+                    
+                    mime_type = match.group(1)
+                    base64_data = match.group(2)
+                    image_bytes = base64.b64decode(base64_data)
+                    logger.info(f"从 data URL 解码图片, MIME 类型: {mime_type}, 大小: {len(image_bytes)} bytes")
+                else:
+                    # 处理 HTTP URL (其他提供商)
+                    async with aiohttp.ClientSession() as http_session:
+                        async with http_session.get(image_url) as resp:
+                            if resp.status != 200:
+                                raise Exception(f"下载图片失败: {resp.status}")
+                            image_bytes = await resp.read()
+                            mime_type = resp.content_type or 'image/png'
+                            logger.info(f"从 HTTP URL 下载图片, 大小: {len(image_bytes)} bytes")
             else:
-                # 处理 HTTP URL (其他提供商)
-                async with aiohttp.ClientSession() as http_session:
-                    async with http_session.get(image_url) as resp:
-                        if resp.status != 200:
-                            raise Exception(f"下载图片失败: {resp.status}")
-                        content = await resp.read()
+                raise ValueError("图片生成失败: Provider 既没有返回 b64_json 也没有返回 url")
+            
+            # 6. 上传到 MinIO
 
             storage_client = await get_storage_client()
             file_id = str(uuid.uuid4())
             upload_file = UploadFile(
                 filename=f"{file_id}.jpg",
-                file=io.BytesIO(content),
+                file=io.BytesIO(image_bytes),
             )
             
             storage_result = await storage_client.upload_file(
