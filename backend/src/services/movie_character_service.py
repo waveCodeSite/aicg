@@ -29,40 +29,45 @@ class CharacterThreeViewPromptBuilder:
     核心结构: [时代背景] + [角色身份] + [三视图要求] + [一致性关键词] + [风格/技术参数]
     """
     
-    TEMPLATE = """LIVE-ACTION CINEMATIC CHARACTER REFERENCE featuring THREE CONSISTENT PHOTOGRAPHED VIEWS of the SAME REAL HUMAN ACTOR portraying {name}:
-front view, 90-degree profile view, and back view.
+    TEMPLATE = """CINEMATIC LIVE-ACTION CHARACTER REFERENCE
+featuring THREE CONSISTENT PHOTOGRAPHED VIEWS
+of the SAME REAL HUMAN ACTOR portraying {name}:
 
-**THIS IS NOT A 3D RENDER. THIS IS NOT CGI. THIS IS NOT ANIMATION.**
-This is a live-action, real human actor photographed for a feature film character reference.
+front view, 90-degree side view, and back view,
+captured during the same on-set studio photoshoot.
 
 Character details:
 - Name: {name}
-- Era / Setting: {era_background}
-- Role: {occupation}
-- Appearance: {key_visual_traits}
+- Era / Time Period: {era_background}
+- Occupation / Social Status: {occupation}
+- Key Visual Traits: {key_visual_traits}
 
-Actor & Consistency Requirements:
-- The SAME real human actor appears in all three views
-- Identical facial structure, skin texture, pores, scars, and micro-details
-- Identical hairstyle, hairline, hair length, and hair color
-- Identical costume, wear marks, fabric folds, and equipment placement
-- Natural human posture, neutral production stance
-- Emotionless or neutral expression suitable for film reference photography
+Live-Action Photography Requirements:
+- Portrayed by ONE real human actor
+- All three views show the SAME actor, SAME costume, SAME makeup
+- Natural human skin texture with pores, imperfections, micro-details
+- Real fabric materials, real metal wear, practical costume design
+- Identical hairstyle, body proportions, posture across all views
+- Neutral production stance for film reference
 
-Live-Action Photography & Cinematography:
-- Shot as live-action film stills
-- Feature film quality
-- Shot on ARRI ALEXA / RED cinema camera
-- Professional cinematic lighting setup, soft but directional
-- Realistic skin tones with natural imperfections (pores, fine lines, texture)
-- Subtle film grain, cinematic contrast, realistic depth of field
-- Neutral or dark studio background, similar to a movie costume test shoot
-- NO 3D rendering artifacts, NO CGI smoothness, NO artificial perfection
+Cinematography & Photography Style:
+- High-end live-action film stills
+- Shot on professional cinema camera (ARRI / RED style look)
+- Real studio lighting, soft key light, natural shadows
+- Photographed, not rendered
+- Neutral or black studio background
+
+STRICT CONSTRAINTS:
+- NO 3D render
+- NO CGI
+- NO Unreal Engine
+- NO game character style
+- NO digital sculpt look
 
 Technical Output:
-- Ultra-high detail live-action character reference
-- Photorealistic human photography
+- Ultra-detailed live-action character reference photos
 - Aspect ratio: 16:9
+- Place the English name in the top-left corner, clearly visible and readable
 """
     
     @classmethod
@@ -174,10 +179,13 @@ class MovieCharacterService(BaseService):
         # 拼凑剧本全文用于分析
         script_text = ""
         for scene in script.scenes:
-            script_text += f"场景 {scene.order_index}: {scene.location} - {scene.description}\n"
+            script_text += f"场景 {scene.order_index}: {scene.scene}\n"
+            if scene.characters:
+                script_text += f"出场角色: {', '.join(scene.characters)}\n"
             for shot in scene.shots:
                 if shot.dialogue:
                     script_text += f"镜头 {shot.order_index} 对话: {shot.dialogue}\n"
+            script_text += "\n"
 
         # 2. 加载 API Key
         from src.models.chapter import Chapter

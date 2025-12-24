@@ -51,8 +51,7 @@ class MovieShot(BaseModel):
 
     scene_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('movie_scenes.id'), nullable=False, index=True)
     order_index = Column(Integer, nullable=False, comment="镜头顺序")
-    visual_description = Column(Text, nullable=False, comment="画面描述")
-    camera_movement = Column(String(200), comment="镜头运动描述")
+    shot = Column(Text, nullable=False, comment="分镜描述")
     dialogue = Column(Text, comment="人物对话内容")
     characters = Column(JSON, default=list, comment="分镜中出现的角色名称列表")
     

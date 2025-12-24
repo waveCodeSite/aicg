@@ -72,8 +72,8 @@ class DialoguePromptEngine(BaseService):
             user_prompt = self.PERFORMANCE_DESIGN_PROMPT.format(
                 char_traits=char_traits,
                 dialogue=shot.dialogue or "None",
-                visual_desc=shot.visual_description,
-                performance_hint=shot.performance_prompt or "None"
+                visual_desc=shot.shot,
+                performance_hint="Natural performance"
             )
             
             response = await llm_provider.completions(

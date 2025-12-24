@@ -79,7 +79,7 @@ export function useMovieWorkflow() {
     }
 
     // Load initial data
-    const loadData = async () => {
+    const loadData = async (skipStepUpdate = false) => {
         if (!projectId.value) {
             console.warn('Cannot load data: missing projectId')
             return
@@ -102,7 +102,10 @@ export function useMovieWorkflow() {
                 }
             }
 
-            determineCurrentStep()
+            // 只在非手动刷新时自动确定步骤
+            if (!skipStepUpdate) {
+                determineCurrentStep()
+            }
         } catch (error) {
             console.error('Failed to load data:', error)
         } finally {

@@ -42,7 +42,7 @@ def _character_appears_in_shot(char_name: str, shot: MovieShot) -> bool:
     import re
     
     # 合并镜头描述和对白
-    full_text = f"{shot.visual_description or ''} {shot.dialogue or ''}"
+    full_text = f"{shot.shot or ''} {shot.dialogue or ''}"
     
     # 策略1: 完整名称匹配
     if char_name in full_text:
@@ -118,7 +118,7 @@ async def _generate_keyframe_worker(
     async with semaphore:
         try:
             # 1. 构建 Prompt (包含角色信息)
-            base_prompt = shot.visual_description
+            base_prompt = shot.shot
             
             character_context = ""
             # 从shot.characters字段获取角色列表

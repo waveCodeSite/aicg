@@ -187,9 +187,13 @@ const handleBatchGenerateAvatars = async (apiKeyId, model) => {
   await characterWorkflow.batchGenerateAvatars(apiKeyId, model)
 }
 
-const handleExtractScenes = async (chapterId, apiKeyId, model) => {
-  await sceneWorkflow.extractScenes(chapterId, apiKeyId, model)
-  await loadData()
+const handleExtractScenes = async (apiKeyId, model) => {
+  if (!selectedChapterId.value) {
+    ElMessage.warning('请先选择章节')
+    return
+  }
+  await sceneWorkflow.extractScenes(selectedChapterId.value, apiKeyId, model)
+  await loadData(true)  // skipStepUpdate=true 保持当前步骤
 }
 
 const handleExtractShots = async (scriptId, apiKeyId, model) => {

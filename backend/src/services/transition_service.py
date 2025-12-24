@@ -71,13 +71,11 @@ class TransitionService(BaseService):
 
         # 3. 组合两个分镜的描述
         combined_text = f"""分镜1:
-{from_shot.visual_description}
-镜头运动: {from_shot.camera_movement or '无'}
+{from_shot.shot}
 对话: {from_shot.dialogue or '无'}
 
 分镜2:
-{to_shot.visual_description}
-镜头运动: {to_shot.camera_movement or '无'}
+{to_shot.shot}
 对话: {to_shot.dialogue or '无'}
 """
 
