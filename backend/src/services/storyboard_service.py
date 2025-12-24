@@ -67,17 +67,11 @@ class StoryboardService(BaseService):
             base_url=api_key.base_url
         )
 
-        # 4. 加载分镜提取prompt
-        import os
-        prompt_path = os.path.join(
-            os.path.dirname(__file__), 
-            '../../docs/prompts/4.分镜提取prompt.md'
-        )
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            prompt_template = f.read()
+        # 4. 使用统一的Prompt模板管理器
+        from src.services.movie_prompts import MoviePromptTemplates
 
-        # 5. 格式化prompt
-        prompt = prompt_template.format(
+        # 5. 使用模板管理器生成prompt
+        prompt = MoviePromptTemplates.get_shot_extraction_prompt(
             characters=json.dumps(character_list, ensure_ascii=False),
             scene=scene.scene
         )

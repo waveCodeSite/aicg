@@ -60,14 +60,8 @@ class TransitionService(BaseService):
             base_url=api_key.base_url
         )
 
-        # 2. 加载视频提示词生成prompt
-        import os
-        prompt_path = os.path.join(
-            os.path.dirname(__file__), 
-            '../../docs/prompts/5.视频提示词生成.md'
-        )
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            prompt_template = f.read()
+        # 2. 使用统一的Prompt模板管理器
+        from src.services.movie_prompts import MoviePromptTemplates
 
         # 3. 组合两个分镜的描述
         combined_text = f"""分镜1:
@@ -79,7 +73,8 @@ class TransitionService(BaseService):
 对话: {to_shot.dialogue or '无'}
 """
 
-        prompt = prompt_template.format(text=combined_text)
+        # 4. 使用模板管理器生成prompt
+        prompt = MoviePromptTemplates.get_transition_video_prompt(combined_text)
 
         # 4. 调用LLM生成提示词
         response = await llm_provider.completions(

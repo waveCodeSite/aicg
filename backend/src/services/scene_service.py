@@ -64,53 +64,35 @@ class SceneService(BaseService):
             base_url=api_key.base_url
         )
 
-        # 4. 加载场景提取prompt
-        import os
-        prompt_path = os.path.join(
-            os.path.dirname(__file__), 
-            '../../docs/prompts/3.场景生成prompt.md'
-        )
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            prompt_template = f.read()
+        # 4. 使用统一的Prompt模板管理器
+        from src.services.movie_prompts import MoviePromptTemplates
 
-        # 5. 检查是否已存在剧本，实现安全覆盖
+        # 5. 删除已存在的剧本（如果有），创建全新的
         from sqlalchemy import select
-        stmt = select(MovieScript).where(MovieScript.chapter_id == chapter.id).order_by(MovieScript.created_at.desc())
+        stmt = select(MovieScript).where(MovieScript.chapter_id == chapter.id)
         result = await self.db_session.execute(stmt)
-        scripts = result.scalars().all()
+        existing_scripts = result.scalars().all()
         
-        if scripts:
-            if len(scripts) > 1:
-                logger.warning(f"检测到章节 {chapter_id} 有 {len(scripts)} 个剧本，将使用最新的并删除其他重复项")
-                # 保留最新的，删除其他的
-                script = scripts[0]
-                for old_script in scripts[1:]:
-                    logger.info(f"删除重复剧本: {old_script.id}")
-                    await self.db_session.delete(old_script)
-            else:
-                script = scripts[0]
-            
-            # 已存在剧本，删除旧场景（级联删除会自动删除关联的shots）
-            logger.info(f"检测到已存在剧本 {script.id}，将删除旧场景数据")
-            # 删除所有旧场景
-            for scene in script.scenes:
-                await self.db_session.delete(scene)
+        if existing_scripts:
+            logger.info(f"检测到章节 {chapter_id} 已有 {len(existing_scripts)} 个剧本，将全部删除")
+            for old_script in existing_scripts:
+                logger.info(f"删除旧剧本: {old_script.id}")
+                await self.db_session.delete(old_script)  # 级联删除所有scenes和shots
             await self.db_session.flush()
-            # 重置状态
-            script.status = ScriptStatus.GENERATING
-        else:
-            # 创建新剧本
-            script = MovieScript(chapter_id=chapter.id, status=ScriptStatus.GENERATING)
-            self.db_session.add(script)
-            await self.db_session.flush()
-            logger.info(f"创建新剧本 {script.id}")
+        
+        # 创建全新剧本
+        script = MovieScript(chapter_id=chapter.id, status=ScriptStatus.GENERATING)
+        self.db_session.add(script)
+        await self.db_session.flush()
+        logger.info(f"创建新剧本 {script.id}")
+
 
         try:
             if on_progress:
                 await on_progress(0.2, "正在提取场景...")
 
-            # 格式化prompt
-            prompt = prompt_template.format(
+            # 使用模板管理器生成prompt
+            prompt = MoviePromptTemplates.get_scene_extraction_prompt(
                 characters=json.dumps(character_list, ensure_ascii=False),
                 text=chapter.content
             )
