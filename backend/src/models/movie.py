@@ -78,15 +78,22 @@ class MovieShotTransition(BaseModel):
     to_shot_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('movie_shots.id'), nullable=False, index=True)
     order_index = Column(Integer, nullable=False, comment="过渡顺序")
     
+    # 视频生成相关
     video_prompt = Column(Text, comment="视频生成提示词")
     video_url = Column(String(500), comment="生成的视频URL")
     video_task_id = Column(String(100), comment="视频生成任务ID")
     status = Column(String(20), default="pending", index=True, comment="生成状态")
     
+    # 追踪信息
+    api_key_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('api_keys.id'), nullable=True, index=True, comment="使用的API Key")
+    user_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id'), nullable=True, index=True, comment="所属用户")
+    
     # 关系
     script = relationship("MovieScript")
     from_shot = relationship("MovieShot", foreign_keys=[from_shot_id])
     to_shot = relationship("MovieShot", foreign_keys=[to_shot_id])
+    api_key = relationship("APIKey", foreign_keys=[api_key_id])
+    user = relationship("User", foreign_keys=[user_id])
 
     def __repr__(self) -> str:
         return f"<MovieShotTransition(id={self.id}, from={self.from_shot_id}, to={self.to_shot_id})>"

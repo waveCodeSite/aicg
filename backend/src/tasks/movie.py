@@ -137,16 +137,21 @@ async def movie_generate_single_keyframe(db_session: AsyncSession, self, shot_id
     name="movie.generate_transition_videos"
 )
 @async_task_decorator
-async def movie_generate_transition_videos(db_session: AsyncSession, self, script_id: str, api_key_id: str, video_model: str):
+async def movie_generate_transition_videos(
+    db_session: AsyncSession, 
+    self, 
+    script_id: str, 
+    api_key_id: str, 
+    video_model: str
+):
     """批量生成过渡视频的 Celery 任务"""
     from src.services.transition_service import TransitionService
     logger.info(f"Celery任务开始: movie_generate_transition_videos (script_id={script_id})")
     
     service = TransitionService(db_session)
-    # TODO: 实现批量生成逻辑
-    result = {"success": 0, "failed": 0, "message": "批量生成功能待实现"}
+    result = await service.batch_generate_transition_videos(script_id, api_key_id, video_model)
     
-    logger.info(f"Celery任务完成: movie_generate_transition_videos")
+    logger.info(f"Celery任务完成: movie_generate_transition_videos, 结果: {result}")
     return result
 
 @celery_app.task(
@@ -172,18 +177,13 @@ async def movie_generate_single_transition(db_session: AsyncSession, self, trans
     name="movie.sync_transition_video_status"
 )
 @async_task_decorator
-async def sync_transition_video_status(db_session: AsyncSession, self, api_key_id: str):
-    """
-    同步过渡视频任务状态（定时任务）
-    
-    Args:
-        api_key_id: API Key ID
-    """
+async def sync_transition_video_status(db_session: AsyncSession, self):
+    """同步过渡视频任务状态（定时任务，不需要api_key_id参数）"""
     from src.services.transition_service import TransitionService
     logger.info(f"Celery任务开始: sync_transition_video_status")
     
     service = TransitionService(db_session)
-    result = await service.sync_transition_video_status(api_key_id)
+    result = await service.sync_transition_video_status()
     
     logger.info(f"Celery任务完成: sync_transition_video_status, 结果: {result}")
     return result

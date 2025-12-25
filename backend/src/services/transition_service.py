@@ -348,19 +348,59 @@ class TransitionService(BaseService):
             "message": f"创建完成: 新建 {success_count}, 跳过 {skipped_count}"
         }
 
+    async def _generate_single_transition_video(
+        self,
+        transition: MovieShotTransition,
+        api_key_id: str,
+        user_id: str,
+        video_model: str,
+        provider
+    ) -> dict:
+        """
+        生成单个过渡视频的通用逻辑（内部方法）
+        
+        Args:
+            transition: 过渡对象
+            api_key_id: API Key ID
+            user_id: 用户ID
+            video_model: 视频模型
+            provider: VectorEngine provider实例
+            
+        Returns:
+            dict: {"success": bool, "transition_id": str, "task_id": str} 或 {"success": bool, "error": str}
+        """
+        try:
+            # 调用视频生成
+            result = await provider.create_video(
+                prompt=transition.video_prompt,
+                model=video_model
+            )
+            
+            # 更新记录
+            transition.video_task_id = result.get("task_id")
+            transition.status = "processing"
+            transition.api_key_id = api_key_id
+            transition.user_id = user_id
+            
+            logger.info(f"过渡视频任务已提交: {transition.id}, task_id={result.get('task_id')}")
+            return {"success": True, "transition_id": str(transition.id), "task_id": result.get("task_id")}
+        except Exception as e:
+            logger.error(f"生成过渡视频失败 {transition.id}: {e}")
+            return {"success": False, "error": str(e)}
+
     async def generate_transition_video(
         self,
         transition_id: str,
         api_key_id: str,
-        video_model: str = "veo_3_1-fast"
+        video_model: str
     ) -> str:
         """
-        生成过渡视频
+        生成单个过渡视频
         
         Args:
             transition_id: 过渡ID
             api_key_id: API Key ID
-            video_model: 视频模型
+            video_model: 视频模型名称
             
         Returns:
             str: 视频任务ID
@@ -373,9 +413,18 @@ class TransitionService(BaseService):
         if not transition.video_prompt:
             raise ValueError(f"过渡 {transition_id} 没有视频提示词")
         
+        # 获取user_id（从script关联获取）
+        from src.models.chapter import Chapter
+        from sqlalchemy.orm import joinedload
+        
+        script = await self.db_session.get(MovieScript, transition.script_id, options=[
+            joinedload(MovieScript.chapter).joinedload(Chapter.project)
+        ])
+        user_id = script.chapter.project.owner_id
+        
         # 加载API Key
         api_key_service = APIKeyService(self.db_session)
-        api_key = await api_key_service.get_api_key_by_id(api_key_id)
+        api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
         
         # 使用VectorEngineProvider生成视频
         from src.services.provider.vector_engine_provider import VectorEngineProvider
@@ -385,27 +434,113 @@ class TransitionService(BaseService):
             base_url=api_key.base_url
         )
         
-        # 调用视频生成
+        # 调用通用生成逻辑
         logger.info(f"开始生成过渡视频: {transition_id}, 模型: {video_model}")
-        result = await video_provider.create_video(
-            prompt=transition.video_prompt,
-            model=video_model
+        result = await self._generate_single_transition_video(
+            transition, api_key_id, user_id, video_model, video_provider
         )
         
-        # 更新过渡记录
-        transition.video_task_id = result.get("task_id")
-        transition.status = "processing"
+        if not result["success"]:
+            raise ValueError(f"生成失败: {result.get('error')}")
+        
+        # 提交数据库
         await self.db_session.commit()
         
         logger.info(f"过渡视频生成任务已提交: {transition_id}, task_id: {result.get('task_id')}")
         return result.get("task_id")
 
-    async def sync_transition_video_status(self, api_key_id: str) -> dict:
+    async def batch_generate_transition_videos(
+        self,
+        script_id: str,
+        api_key_id: str,
+        video_model: str
+    ) -> dict:
+        """
+        批量生成过渡视频
+        
+        Args:
+            script_id: 剧本ID
+            api_key_id: API Key ID
+            video_model: 视频模型名称
+            
+        Returns:
+            dict: 生成统计信息
+        """
+        from src.models.chapter import Chapter
+        from sqlalchemy.orm import joinedload
+        
+        logger.info(f"开始批量生成过渡视频: script_id={script_id}")
+        
+        # 1. 加载script和user信息
+        script = await self.db_session.get(MovieScript, script_id, options=[
+            selectinload(MovieScript.scenes).selectinload(MovieScene.shots),
+            joinedload(MovieScript.chapter).joinedload(Chapter.project)
+        ])
+        if not script:
+            raise ValueError("剧本不存在")
+        
+        user_id = script.chapter.project.owner_id
+        
+        # 2. 加载API Key
+        api_key_service = APIKeyService(self.db_session)
+        api_key = await api_key_service.get_api_key_by_id(api_key_id, str(user_id))
+        
+        # 3. 查询所有pending状态且有提示词的过渡
+        stmt = select(MovieShotTransition).where(
+            MovieShotTransition.script_id == script_id,
+            MovieShotTransition.status == "pending",
+            MovieShotTransition.video_prompt.isnot(None)
+        )
+        result = await self.db_session.execute(stmt)
+        transitions = result.scalars().all()
+        
+        if not transitions:
+            logger.info("没有待生成的过渡视频")
+            return {"total": 0, "success": 0, "failed": 0, "message": "没有待生成的过渡"}
+        
+        logger.info(f"找到 {len(transitions)} 个待生成的过渡视频")
+        
+        # 4. 创建VectorEngine provider
+        from src.services.provider.vector_engine_provider import VectorEngineProvider
+        provider = VectorEngineProvider(
+            api_key=api_key.get_api_key(),
+            base_url=api_key.base_url
+        )
+        
+        # 5. 并发生成
+        max_concurrent = 5
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def _generate_worker(transition):
+            async with semaphore:
+                return await self._generate_single_transition_video(
+                    transition, api_key_id, user_id, video_model, provider
+                )
+        
+        # 6. 执行并发任务
+        tasks = [_generate_worker(t) for t in transitions]
+        results = await asyncio.gather(*tasks)
+        
+        # 7. 提交数据库
+        await self.db_session.commit()
+        
+        # 8. 统计结果
+        success_count = sum(1 for r in results if r["success"])
+        failed_count = len(results) - success_count
+        
+        logger.info(f"批量生成完成: 总计 {len(results)}, 成功 {success_count}, 失败 {failed_count}")
+        return {
+            "total": len(results),
+            "success": success_count,
+            "failed": failed_count
+        }
+
+    async def sync_transition_video_status(self, api_key_id: str = None) -> dict:
         """
         同步过渡视频任务状态
         
         Args:
-            api_key_id: API Key ID（用于调用VectorEngine API）
+            api_key_id: 可选，如果不提供则从transition记录中获取
             
         Returns:
             dict: 同步统计信息
@@ -413,20 +548,10 @@ class TransitionService(BaseService):
         import httpx
         from fastapi import UploadFile
         import io
-        from src.core.storage import storage_client
+        import uuid
+        from src.core.storage import get_storage_client
         
         logger.info("开始同步过渡视频任务状态")
-        
-        # 加载API Key
-        api_key_service = APIKeyService(self.db_session)
-        api_key = await api_key_service.get_api_key_by_id(api_key_id)
-        
-        # 创建VectorEngine provider
-        from src.services.provider.vector_engine_provider import VectorEngineProvider
-        provider = VectorEngineProvider(
-            api_key=api_key.get_api_key(),
-            base_url=api_key.base_url
-        )
         
         # 查询所有processing状态的过渡
         stmt = select(MovieShotTransition).where(
@@ -448,6 +573,23 @@ class TransitionService(BaseService):
         
         for transition in transitions:
             try:
+                # 从记录中获取API Key ID
+                transition_api_key_id = str(transition.api_key_id) if transition.api_key_id else api_key_id
+                if not transition_api_key_id:
+                    logger.warning(f"过渡 {transition.id} 缺少api_key_id，跳过")
+                    continue
+                
+                # 加载API Key
+                api_key_service = APIKeyService(self.db_session)
+                api_key = await api_key_service.get_api_key_by_id(transition_api_key_id)
+                
+                # 创建provider
+                from src.services.provider.vector_engine_provider import VectorEngineProvider
+                provider = VectorEngineProvider(
+                    api_key=api_key.get_api_key(),
+                    base_url=api_key.base_url
+                )
+                
                 # 查询任务状态
                 status_data = await provider.get_task_status(transition.video_task_id)
                 status = status_data.get("status")
@@ -458,19 +600,24 @@ class TransitionService(BaseService):
                     video_url = content_data.get("video_url")
                     
                     if video_url:
+                        # 获取user_id
+                        user_id = str(transition.user_id) if transition.user_id else "system"
+                        
                         # 下载视频
                         async with httpx.AsyncClient() as client:
                             response = await client.get(video_url)
                             video_content = response.content
                         
-                        # 上传到MinIO
+                        # 上传到MinIO（使用通用方法）
+                        storage_client = await get_storage_client()
+                        file_id = str(uuid.uuid4())
                         upload_file = UploadFile(
-                            filename=f"{transition.id}.mp4",
+                            filename=f"{file_id}.mp4",
                             file=io.BytesIO(video_content)
                         )
                         
                         storage_result = await storage_client.upload_file(
-                            user_id="system",  # TODO: 获取正确的user_id
+                            user_id=user_id,
                             file=upload_file,
                             metadata={"transition_id": str(transition.id)}
                         )
