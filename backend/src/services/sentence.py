@@ -162,7 +162,7 @@ class SentenceService(BaseService):
                 context={"chapter_id": paragraph.chapter_id, "sentence_id": sentence_id}
             )
         
-        await self.delete(sentence)
+        self.delete(sentence)
         await self.commit()
 
         logger.info(f"删除句子成功: ID={sentence_id}")

@@ -274,7 +274,7 @@ class ParagraphService(BaseService):
             existing_sentences = existing_sentences_result.scalars().all()
 
             for sentence in existing_sentences:
-                await self.delete(sentence)
+                self.delete(sentence)
 
             # 创建新句子
             if sentences_list:
@@ -345,7 +345,7 @@ class ParagraphService(BaseService):
         logger.info(f"开始删除段落: ID={paragraph_id}, 将删除 {sentence_count} 个句子")
 
         # 删除段落（会级联删除所有句子）
-        await self.delete(paragraph)
+        self.delete(paragraph)
         await self.commit()
 
         logger.info(f"删除段落成功: ID={paragraph_id}, 已删除 {sentence_count} 个句子")

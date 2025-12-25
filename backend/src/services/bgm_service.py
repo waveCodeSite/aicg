@@ -264,11 +264,15 @@ class BGMService(BaseService):
             if bgm.file_key:
                 await storage_client.delete_file(bgm.file_key)
 
-            # 从数据库删除
-            await self.delete(bgm)
+            # 使用 SQL DELETE 语句从数据库删除
+            from sqlalchemy import delete as sql_delete
+            logger.info(f"📝 执行SQL DELETE BGM: ID={bgm_id}")
+            
+            stmt = sql_delete(BGM).where(BGM.id == bgm_id)
+            result = await self.execute(stmt)
             await self.commit()
 
-            logger.info(f"删除BGM: ID={bgm_id}, 名称={bgm.name}")
+            logger.info(f"删除BGM成功: ID={bgm_id}, 名称={bgm.name}, 影响行数={result.rowcount}")
             return True
 
         except Exception as e:

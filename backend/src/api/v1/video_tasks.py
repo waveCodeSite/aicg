@@ -61,7 +61,7 @@ async def create_video_task(
 
     # 根据任务类型触发不同的Celery任务
     if task_data.task_type == VideoTaskType.MOVIE_COMPOSITION.value:
-        from src.tasks.movie import movie_compose_video
+        from src.tasks.movie_composition import movie_compose_video
         movie_compose_video.delay(str(task.id))
     else:
         # 默认：图解说视频

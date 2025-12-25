@@ -60,7 +60,7 @@ class BaseService:
         """添加对象到会话"""
         self.db_session.add(obj)
 
-    async def delete(self, obj):
+    def delete(self, obj):
         """从会话中删除对象"""
         self.db_session.delete(obj)
 

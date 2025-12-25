@@ -237,6 +237,7 @@ class ChapterService(BaseService):
         search: Optional[str] = None,
         sort_by: str = "chapter_number",
         sort_order: str = "asc",
+        project_type: Optional[str] = None,
     ) -> Tuple[List[Chapter], int]:
         """
         获取项目的章节列表（分页）
@@ -252,6 +253,7 @@ class ChapterService(BaseService):
             search: 搜索关键词，支持在标题、内容中搜索
             sort_by: 排序字段，默认chapter_number，支持title、created_at、updated_at等
             sort_order: 排序顺序，默认asc，支持asc/desc
+            project_type: 项目类型过滤，可选（picture_narrative/ai_movie）
 
         Returns:
             Tuple[List[Chapter], int]: (章节列表, 总记录数)
@@ -288,6 +290,12 @@ class ChapterService(BaseService):
                     Chapter.title.ilike(search_term), Chapter.content.ilike(search_term)
                 )
             )
+        
+        # 项目类型过滤
+        if project_type:
+            query = query.join(Project, Chapter.project_id == Project.id).filter(
+                Project.type == project_type
+            )
 
         # 获取总数的查询（复用过滤条件）
         count_query = select(func.count(Chapter.id))
@@ -305,6 +313,12 @@ class ChapterService(BaseService):
                 or_(
                     Chapter.title.ilike(search_term), Chapter.content.ilike(search_term)
                 )
+            )
+        
+        # 项目类型过滤
+        if project_type:
+            count_query = count_query.join(Project, Chapter.project_id == Project.id).filter(
+                Project.type == project_type
             )
 
         # 执行总数查询
@@ -378,7 +392,7 @@ class ChapterService(BaseService):
             existing_paragraphs = existing_paragraphs_result.scalars().all()
 
             for para in existing_paragraphs:
-                await self.delete(para)
+                self.delete(para)
 
             # 创建新的段落和句子
             if paragraphs_data:
@@ -500,7 +514,7 @@ class ChapterService(BaseService):
         )
 
         # 删除章节（会级联删除所有段落和句子）
-        await self.delete(chapter)
+        self.delete(chapter)
         await self.commit()
 
         logger.info(

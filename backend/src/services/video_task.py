@@ -329,7 +329,7 @@ class VideoTaskService(BaseService):
                 "正在处理中的任务不能删除"
             )
 
-        await self.delete(task)
+        self.delete(task)
         await self.commit()
 
         logger.info(f"删除视频任务: ID={task_id}")
@@ -490,10 +490,12 @@ class VideoTaskService(BaseService):
 
     async def delete_video_task(self, task_id: str) -> bool:
         """
-        删除视频任务（不验证用户，由API层验证）
+        删除视频任务（不验证用户,由API层验证）
         
         同时删除 MinIO 上的相关视频文件：
         - 最终章节视频（如果存在）
+        
+        以及删除相关的发布任务记录
 
         Args:
             task_id: 任务ID
@@ -502,8 +504,10 @@ class VideoTaskService(BaseService):
             是否删除成功
         """
         task = await self.get_video_task_by_id(task_id)
+        
+        logger.info(f"🗑️ 准备删除视频任务: ID={task_id}, Status={task.status}")
 
-        # 如果任务正在处理中，不允许删除
+        # 如果任务正在处理中,不允许删除
         if task.status in [
             VideoTaskStatus.VALIDATING.value,
             VideoTaskStatus.DOWNLOADING_MATERIALS.value,
@@ -526,11 +530,34 @@ class VideoTaskService(BaseService):
             except Exception as e:
                 logger.warning(f"⚠️ 删除视频文件失败（将继续删除任务记录）: {e}")
 
-        # 删除数据库记录
-        await self.delete(task)
-        await self.commit()
+        # 先删除相关的发布任务记录（避免外键约束）
+        from sqlalchemy import delete as sql_delete
+        from src.models.publish_task import PublishTask
+        
+        logger.info(f"📝 删除相关的发布任务: video_task_id={task_id}")
+        publish_delete_stmt = sql_delete(PublishTask).where(PublishTask.video_task_id == task_id)
+        publish_result = await self.execute(publish_delete_stmt)
+        logger.info(f"✅ 删除了 {publish_result.rowcount} 个发布任务")
 
-        logger.info(f"🗑️ 删除视频任务: ID={task_id}")
+        # 使用 SQL DELETE 语句删除数据库记录
+        logger.info(f"📝 执行SQL DELETE: ID={task_id}")
+        
+        stmt = sql_delete(VideoTask).where(VideoTask.id == task_id)
+        result = await self.execute(stmt)
+        
+        logger.info(f"💾 提交事务以删除任务: ID={task_id}, 影响行数={result.rowcount}")
+        try:
+            await self.commit()
+            logger.info(f"✅ 事务提交成功: ID={task_id}")
+        except Exception as e:
+            logger.error(f"❌ 事务提交失败: ID={task_id}, Error={e}")
+            raise
+
+        if result.rowcount == 0:
+            logger.warning(f"⚠️ 删除操作未影响任何行: ID={task_id}")
+        else:
+            logger.info(f"🗑️ 删除视频任务完成: ID={task_id}, 删除了 {result.rowcount} 行")
+        
         return True
 
 

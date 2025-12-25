@@ -214,6 +214,13 @@
       v-model:keyframe-dialog="showKeyframeDialog"
       v-model:transition-dialog="showTransitionDialog"
     />
+    
+    <!-- 电影合成对话框 -->
+    <CreateMovieTaskDialog
+      v-model="showMovieTaskDialog"
+      :chapter-id="selectedChapterId"
+      @success="handleCompositionSuccess"
+    />
   </div>
 </template>
 
@@ -232,6 +239,7 @@ import SceneImagePanel from '@/components/studio/SceneImagePanel.vue'
 import KeyframePanel from '@/components/studio/KeyframePanel.vue'
 import TransitionPanel from '@/components/studio/TransitionPanel.vue'
 import StudioDialogs from '@/components/studio/StudioDialogs.vue'
+import CreateMovieTaskDialog from '@/components/video/CreateMovieTaskDialog.vue'
 
 import { useMovieWorkflow } from '@/composables/useMovieWorkflow'
 
@@ -266,6 +274,7 @@ const showSceneDialog = ref(false)
 const showShotDialog = ref(false)
 const showKeyframeDialog = ref(false)
 const showTransitionDialog = ref(false)
+const showMovieTaskDialog = ref(false)
 
 // Material check states
 const checkingMaterials = ref(false)
@@ -420,43 +429,16 @@ const handleCheckMaterials = async () => {
 }
 
 // Start composition
-const handleStartComposition = async () => {
-  try {
-    await ElMessageBox.confirm(
-      '确定要开始合成电影吗？这将创建一个视频合成任务。',
-      '确认合成',
-      {
-        confirmButtonText: '开始合成',
-        cancelButtonText: '取消',
-        type: 'info'
-      }
-    )
-    
-    console.log('准备跳转到视频任务页面，参数:', {
-      action: 'create',
-      type: 'movie_composition',
-      chapterId: selectedChapterId.value
-    })
-    
-    // 跳转到视频任务页面（路由名称是 GenerationPage）
-    await router.push({
-      name: 'GenerationPage',
-      query: {
-        action: 'create',
-        type: 'movie_composition',
-        chapterId: selectedChapterId.value
-      }
-    })
-    
-    console.log('跳转成功')
-    ElMessage.success('正在跳转到视频任务页面...')
-  } catch (e) {
-    // 用户取消或跳转失败
-    if (e !== 'cancel') {
-      console.error('跳转失败:', e)
-      ElMessage.error('跳转失败: ' + (e.message || '未知错误'))
-    }
-  }
+const handleStartComposition = () => {
+  // 直接打开电影合成对话框
+  showMovieTaskDialog.value = true
+}
+
+// Handle composition success
+const handleCompositionSuccess = () => {
+  ElMessage.success('电影合成任务已创建，可以在视频任务页面查看进度')
+  // 可选：跳转到视频任务页面
+  router.push({ name: 'GenerationPage' })
 }
 
 // Watch projectId changes

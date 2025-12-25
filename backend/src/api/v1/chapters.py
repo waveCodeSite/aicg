@@ -42,6 +42,7 @@ async def get_chapters(
     search: Optional[str] = Query("", description="搜索关键词"),
     sort_by: str = Query("chapter_number", description="排序字段"),
     sort_order: str = Query("asc", regex="^(asc|desc)$", description="排序顺序"),
+    project_type: Optional[str] = Query(None, description="项目类型过滤(picture_narrative/ai_movie)"),
 ):
     """获取项目的章节列表"""
     chapter_service = ChapterService(db)
@@ -72,6 +73,7 @@ async def get_chapters(
         search=search_query,
         sort_by=sort_by,
         sort_order=sort_order,
+        project_type=project_type,
     )
 
     # 转换为响应模型

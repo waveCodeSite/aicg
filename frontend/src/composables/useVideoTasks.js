@@ -66,9 +66,8 @@ export function useVideoTasks() {
         try {
             await videoTasksAPI.delete(id)
             ElMessage.success('任务删除成功')
-            // 从列表中移除
-            tasks.value = tasks.value.filter(t => t.id !== id)
-            total.value--
+            // 重新获取列表以确保数据一致性
+            await fetchTasks()
             // 刷新统计数据
             fetchStats()
         } catch (error) {

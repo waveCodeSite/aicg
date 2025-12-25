@@ -165,7 +165,6 @@
     <!-- 对话框组件 -->
     <CreateVideoTaskDialog 
       v-model="showCreateDialog"
-      :initial-params="movieCompositionParams"
       @success="handleCreateSuccess"
     />
     
@@ -226,23 +225,10 @@ const selectedTaskId = ref('')
 const previewUrl = ref('')
 const previewTitle = ref('')
 
-// 电影合成相关状态
-const movieCompositionParams = ref(null)
-
 // 生命周期
 onMounted(() => {
   refreshList()
   startPolling(3000, getQueryParams())
-  
-  // 检查 URL 查询参数，如果是从 MovieStudio 跳转过来的
-  if (route.query.action === 'create' && route.query.type === 'movie_composition') {
-    movieCompositionParams.value = {
-      type: 'movie_composition',
-      chapterId: route.query.chapterId
-    }
-    // 自动打开创建对话框
-    showCreateDialog.value = true
-  }
 })
 
 onUnmounted(() => {

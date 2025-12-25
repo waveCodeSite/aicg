@@ -443,7 +443,7 @@ class ProjectService(BaseService):
         """
         project = await self.get_project_by_id(project_id, owner_id)
 
-        await self.delete(project)
+        self.delete(project)
         await self.commit()
 
         logger.info(f"删除项目成功: ID={project_id}, 标题={project.title}")
