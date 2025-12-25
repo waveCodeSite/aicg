@@ -36,10 +36,10 @@
             <div class="transition-actions">
               <el-button
                 v-if="!transition.video_url"
-                type="success"
+                type="primary"
                 size="small"
                 :loading="generatingIds.has(transition.id)"
-                :disabled="generatingIds.has(transition.id)"
+                :disabled="generatingIds.has(transition.id) || transition.status === 'processing'"
                 @click="handleGenerateVideo(transition)"
               >
                 生成视频
@@ -49,10 +49,20 @@
                 type="warning"
                 size="small"
                 :loading="generatingIds.has(transition.id)"
-                :disabled="generatingIds.has(transition.id)"
+                :disabled="generatingIds.has(transition.id) || transition.status === 'processing'"
                 @click="handleRegenerateVideo(transition)"
               >
                 重新生成
+              </el-button>
+              <el-button
+                v-if="transition.status === 'processing'"
+                type="info"
+                size="small"
+                :loading="refreshingIds.has(transition.id)"
+                :icon="Refresh"
+                @click="handleRefreshStatus(transition)"
+              >
+                刷新状态
               </el-button>
               <el-button
                 type="primary"
@@ -117,6 +127,11 @@
           <div v-else-if="transition.status === 'processing'" class="transition-placeholder">
             <el-icon :size="40"><Loading /></el-icon>
             <p>生成中...</p>
+          </div>
+          <div v-else-if="transition.status === 'failed'" class="transition-placeholder error">
+            <el-icon :size="40" color="#f56c6c"><CircleClose /></el-icon>
+            <p class="error-text">生成失败</p>
+            <p v-if="transition.error_message" class="error-message">{{ formatErrorMessage(transition.error_message) }}</p>
           </div>
           <div v-else class="transition-placeholder">
             <el-icon :size="40"><VideoCamera /></el-icon>
@@ -301,7 +316,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, VideoCamera } from '@element-plus/icons-vue'
+import { Loading, VideoCamera, CircleClose, Refresh } from '@element-plus/icons-vue'
 import { useTransitionWorkflow } from '@/composables/useTransitionWorkflow'
 import api from '@/services/api'
 
@@ -322,6 +337,9 @@ const {
   generateSingleVideo,
   deleteTransition
 } = useTransitionWorkflow()
+
+// 刷新状态
+const refreshingIds = ref(new Set())
 
 // 对话框状态
 const showCreateDialog = ref(false)
@@ -531,14 +549,73 @@ const handleSingleGenerateConfirm = async () => {
   if (!singleGenerateFormData.value.apiKeyId || !singleGenerateFormData.value.videoModel) {
     return
   }
-  await generateSingleVideo(
-    singleGenerateFormData.value.transitionId,
-    props.scriptId,
-    singleGenerateFormData.value.apiKeyId,
-    singleGenerateFormData.value.videoModel,
-    singleGenerateFormData.value.prompt
-  )
+  
+  // 防止重复点击
+  if (generatingIds.value.has(singleGenerateFormData.value.transitionId)) {
+    ElMessage.warning('视频正在生成中，请勿重复提交')
+    return
+  }
+
+  try {
+    await generateSingleVideo(
+      singleGenerateFormData.value.transitionId,
+      singleGenerateFormData.value.apiKeyId,
+      singleGenerateFormData.value.videoModel
+    )
+    ElMessage.success('视频生成任务已提交')
+    await loadTransitions(props.scriptId)
+  } catch (error) {
+    console.error('生成失败:', error)
+    ElMessage.error('生成失败: ' + (error.response?.data?.detail || error.message))
+  }
   showSingleGenerateDialog.value = false
+}
+
+// 刷新单个过渡状态
+const handleRefreshStatus = async (transition) => {
+  try {
+    refreshingIds.value.add(transition.id)
+    
+    // 调用API获取最新状态
+    const response = await api.get(`/movie-transitions/${transition.id}`)
+    
+    // 更新本地数据
+    const index = transitions.value.findIndex(t => t.id === transition.id)
+    if (index !== -1) {
+      transitions.value[index] = response.data
+      
+      // 显示状态信息
+      if (response.data.status === 'completed') {
+        ElMessage.success('视频已生成完成！')
+      } else if (response.data.status === 'failed') {
+        ElMessage.error(`生成失败: ${response.data.error_message || '未知错误'}`)
+      } else if (response.data.status === 'processing') {
+        ElMessage.info('视频仍在生成中...')
+      }
+    }
+  } catch (error) {
+    console.error('刷新状态失败:', error)
+    ElMessage.error('刷新状态失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    refreshingIds.value.delete(transition.id)
+  }
+}
+
+// 格式化错误信息
+const formatErrorMessage = (errorMsg) => {
+  if (!errorMsg) return '未知错误'
+  
+  try {
+    // 尝试解析JSON格式的错误
+    const errorObj = JSON.parse(errorMsg)
+    if (errorObj.message) {
+      return errorObj.message
+    }
+    return JSON.stringify(errorObj, null, 2)
+  } catch {
+    // 不是JSON，直接返回
+    return errorMsg
+  }
 }
 
 // 删除
@@ -704,15 +781,36 @@ const handleDelete = async (transition) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  height: 200px;
   background: #f5f7fa;
-  border-radius: 4px;
+  border-radius: 8px;
   color: #909399;
-  margin-top: 12px;
-}
-
-.transition-placeholder p {
-  margin-top: 8px;
-  font-size: 13px;
+  
+  p {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  
+  &.error {
+    background: #fef0f0;
+    border: 1px solid #fde2e2;
+    
+    .error-text {
+      color: #f56c6c;
+      font-weight: 500;
+    }
+    
+    .error-message {
+      margin-top: 8px;
+      padding: 8px 16px;
+      background: #fff;
+      border-radius: 4px;
+      color: #606266;
+      font-size: 12px;
+      max-width: 80%;
+      text-align: center;
+      word-break: break-word;
+    }
+  }
 }
 </style>

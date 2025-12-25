@@ -83,6 +83,7 @@ class MovieShotTransition(BaseModel):
     video_url = Column(String(500), comment="生成的视频URL")
     video_task_id = Column(String(100), comment="视频生成任务ID")
     status = Column(String(20), default="pending", index=True, comment="生成状态")
+    error_message = Column(Text, nullable=True, comment="失败错误信息")
     
     # 追踪信息
     api_key_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('api_keys.id'), nullable=True, index=True, comment="使用的API Key")
