@@ -348,6 +348,64 @@ class TransitionService(BaseService):
             "message": f"创建完成: 新建 {success_count}, 跳过 {skipped_count}"
         }
 
+    async def _load_keyframes_as_base64(self, from_shot_id: str, to_shot_id: str) -> list:
+        """
+        加载前后分镜的关键帧并转换为base64 data URL
+        
+        Args:
+            from_shot_id: 起始分镜ID
+            to_shot_id: 结束分镜ID
+            
+        Returns:
+            list: base64 data URL列表
+        """
+        import base64
+        import aiohttp
+        from datetime import timedelta
+        from src.core.storage import get_storage_client
+        
+        # 加载分镜
+        from_shot = await self.db_session.get(MovieShot, from_shot_id)
+        to_shot = await self.db_session.get(MovieShot, to_shot_id)
+        
+        keyframe_images = []
+        
+        for shot, shot_name in [(from_shot, "from"), (to_shot, "to")]:
+            if not shot or not shot.keyframe_url:
+                continue
+            
+            try:
+                # 如果是MinIO key，转换为presigned URL
+                keyframe_url = shot.keyframe_url
+                if keyframe_url.startswith("uploads/"):
+                    storage_client = await get_storage_client()
+                    keyframe_url = storage_client.get_presigned_url(
+                        keyframe_url, 
+                        expires=timedelta(hours=1)
+                    )
+                
+                # 下载关键帧并转base64
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(keyframe_url, timeout=10) as resp:
+                        if resp.status == 200:
+                            img_data = await resp.read()
+                            b64_img = base64.b64encode(img_data).decode('utf-8')
+                            
+                            # 检测MIME类型
+                            mime_type = "image/jpeg"
+                            if img_data[:4] == b'\x89PNG':
+                                mime_type = "image/png"
+                            
+                            # VectorEngine使用data URL格式
+                            keyframe_images.append(f"data:{mime_type};base64,{b64_img}")
+                            logger.info(f"成功加载{shot_name}关键帧")
+                        else:
+                            logger.warning(f"下载{shot_name}关键帧失败: HTTP {resp.status}")
+            except Exception as e:
+                logger.warning(f"处理{shot_name}关键帧失败: {e}")
+        
+        return keyframe_images
+
     async def _generate_single_transition_video(
         self,
         transition: MovieShotTransition,
@@ -370,10 +428,17 @@ class TransitionService(BaseService):
             dict: {"success": bool, "transition_id": str, "task_id": str} 或 {"success": bool, "error": str}
         """
         try:
-            # 调用视频生成
+            # 加载关键帧
+            keyframe_images = await self._load_keyframes_as_base64(
+                transition.from_shot_id, 
+                transition.to_shot_id
+            )
+            
+            # 调用视频生成（传递关键帧）
             result = await provider.create_video(
                 prompt=transition.video_prompt,
-                model=video_model
+                model=video_model,
+                images=keyframe_images if keyframe_images else None
             )
             
             # 更新记录
@@ -382,7 +447,7 @@ class TransitionService(BaseService):
             transition.api_key_id = api_key_id
             transition.user_id = user_id
             
-            logger.info(f"过渡视频任务已提交: {transition.id}, task_id={result.get('task_id')}")
+            logger.info(f"过渡视频任务已提交: {transition.id}, task_id={result.get('task_id')}, keyframes={len(keyframe_images)}")
             return {"success": True, "transition_id": str(transition.id), "task_id": result.get("task_id")}
         except Exception as e:
             logger.error(f"生成过渡视频失败 {transition.id}: {e}")
