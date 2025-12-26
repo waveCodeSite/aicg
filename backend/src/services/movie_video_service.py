@@ -185,10 +185,14 @@ class MovieVideoService(BaseService):
         
         logger.info(f"🎬 开始拼接 {len(video_paths)} 个分镜视频")
         
+        # 使用优化的拼接方法,去除重复帧
+        # trim_frames=35: 每个后续视频裁剪开头35帧,避免过渡视频的重复
         success = concatenate_videos(
             video_paths,
             final_video_path,
-            concat_file_path
+            concat_file_path,
+            remove_duplicate_frames=True,
+            trim_frames=35
         )
         
         if not success:

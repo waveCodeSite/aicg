@@ -72,6 +72,52 @@ def get_audio_duration(audio_path: str) -> Optional[float]:
         return None
 
 
+def get_video_fps(video_path: str) -> Optional[float]:
+    """
+    获取视频帧率
+
+    Args:
+        video_path: 视频文件路径
+
+    Returns:
+        视频帧率（fps），如果失败返回None
+    """
+    try:
+        # 使用ffprobe获取视频帧率
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=r_frame_rate",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                video_path
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            # 帧率格式为 "30/1" 或 "30000/1001"
+            fps_str = result.stdout.strip()
+            if '/' in fps_str:
+                num, den = fps_str.split('/')
+                fps = float(num) / float(den)
+            else:
+                fps = float(fps_str)
+            
+            logger.debug(f"视频帧率: {video_path} = {fps:.2f}fps")
+            return fps
+        else:
+            logger.error(f"获取视频帧率失败: {result.stderr}")
+            return None
+
+    except Exception as e:
+        logger.error(f"获取视频帧率异常: {e}")
+        return None
+
+
 def create_concat_file(video_paths: List[Path], output_path: Path) -> None:
     """
     创建FFmpeg concat文件
@@ -238,15 +284,153 @@ def build_sentence_video_command(
     return command
 
 
-def concatenate_videos(video_paths: List[Path], output_path: Path, concat_file_path: Path) -> bool:
+def concatenate_videos(
+    video_paths: List[Path], 
+    output_path: Path, 
+    concat_file_path: Path,
+    remove_duplicate_frames: bool = True,
+    trim_frames: int = 35
+) -> bool:
     """
-    拼接多个视频文件
+    拼接多个视频文件,可选去除相邻视频间的重复帧
 
     Args:
         video_paths: 视频文件路径列表
         output_path: 输出视频路径
-        concat_file_path: concat文件路径
+        concat_file_path: concat文件路径(用于fallback)
+        remove_duplicate_frames: 是否去除相邻视频间的重复帧(默认True)
+        trim_frames: 每个后续视频裁剪开头的帧数(默认35帧,约1.5秒@24fps)
 
+    Returns:
+        是否成功
+    """
+    try:
+        if len(video_paths) == 0:
+            logger.error("视频路径列表为空")
+            return False
+        
+        if len(video_paths) == 1:
+            # 只有一个视频,直接复制
+            import shutil
+            shutil.copy2(video_paths[0], output_path)
+            logger.info(f"只有一个视频,直接复制: {output_path}")
+            return True
+        
+        # 如果不需要去除重复帧,使用原有的快速方法
+        if not remove_duplicate_frames:
+            return _concatenate_videos_fast(video_paths, output_path, concat_file_path)
+        
+        # 使用滤镜去除重复帧
+        logger.info(f"开始拼接 {len(video_paths)} 个视频(去除重复帧,裁剪开头{trim_frames}帧)")
+        
+        # 获取第一个视频的帧率
+        fps = get_video_fps(str(video_paths[0]))
+        if not fps:
+            logger.warning("无法获取视频帧率,使用默认值30fps")
+            fps = 30.0
+        
+        # 计算每帧的时长(秒)
+        frame_duration = 1.0 / fps
+        logger.info(f"视频帧率: {fps:.2f}fps, 每帧时长: {frame_duration:.4f}秒, 裁剪{trim_frames}帧={trim_frames*frame_duration:.4f}秒")
+        
+        # 构建filter_complex
+        # 简化策略: 只裁剪后续视频的开头
+        # - 第一个视频: 保持完整
+        # - 后续视频: 去掉前N帧
+        video_filters = []
+        audio_filters = []
+        
+        for idx, video_path in enumerate(video_paths):
+            if idx == 0:
+                # 第一个视频保持完整
+                video_filters.append(f"[{idx}:v]null[v{idx}]")
+                audio_filters.append(f"[{idx}:a]anull[a{idx}]")
+            else:
+                # 后续视频去掉前N帧
+                # 获取视频总帧数用于验证
+                duration = get_audio_duration(str(video_path))
+                if duration:
+                    total_frames = int(duration * fps)
+                    if total_frames <= trim_frames:
+                        logger.warning(f"视频{idx}总帧数({total_frames})不足以裁剪{trim_frames}帧,跳过裁剪")
+                        video_filters.append(f"[{idx}:v]null[v{idx}]")
+                        audio_filters.append(f"[{idx}:a]anull[a{idx}]")
+                        continue
+                
+                # trim: start_frame=N 表示从第N帧开始(跳过前N帧)
+                video_filters.append(f"[{idx}:v]trim=start_frame={trim_frames},setpts=PTS-STARTPTS[v{idx}]")
+                # atrim: start=N*frame_duration 表示跳过前N帧的音频
+                start_time = trim_frames * frame_duration
+                audio_filters.append(f"[{idx}:a]atrim=start={start_time},asetpts=PTS-STARTPTS[a{idx}]")
+        
+        # 拼接所有处理后的流
+        video_inputs = ''.join([f"[v{i}]" for i in range(len(video_paths))])
+        audio_inputs = ''.join([f"[a{i}]" for i in range(len(video_paths))])
+        
+        video_concat = f"{video_inputs}concat=n={len(video_paths)}:v=1:a=0[outv]"
+        audio_concat = f"{audio_inputs}concat=n={len(video_paths)}:v=0:a=1[outa]"
+        
+        # 组合完整的filter_complex
+        filter_complex = ';'.join(video_filters + audio_filters + [video_concat, audio_concat])
+        
+        # 构建FFmpeg命令
+        command = [
+            "ffmpeg",
+            "-y"
+        ]
+        
+        # 添加所有输入文件
+        for video_path in video_paths:
+            command.extend(["-i", str(video_path)])
+        
+        # 添加滤镜和输出参数
+        command.extend([
+            "-filter_complex", filter_complex,
+            "-map", "[outv]",
+            "-map", "[outa]",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "18",  # 高质量
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output_path)
+        ])
+        
+        # 执行命令
+        success, stdout, stderr = run_ffmpeg_command(command, timeout=600)
+        
+        if success:
+            logger.info(f"✅ 视频拼接成功(已去除重复帧): {output_path}")
+            return True
+        else:
+            logger.error(f"❌ 视频拼接失败: {stderr}")
+            # Fallback到快速方法
+            logger.warning("尝试使用快速方法(不去除重复帧)...")
+            return _concatenate_videos_fast(video_paths, output_path, concat_file_path)
+
+    except Exception as e:
+        logger.error(f"视频拼接异常: {e}", exc_info=True)
+        # Fallback到快速方法
+        try:
+            logger.warning("尝试使用快速方法(不去除重复帧)...")
+            return _concatenate_videos_fast(video_paths, output_path, concat_file_path)
+        except Exception as fallback_error:
+            logger.error(f"快速方法也失败: {fallback_error}")
+            return False
+
+
+def _concatenate_videos_fast(video_paths: List[Path], output_path: Path, concat_file_path: Path) -> bool:
+    """
+    快速拼接视频(不去除重复帧)
+    
+    使用 -c copy 直接复制流,速度快但会保留重复帧
+    
+    Args:
+        video_paths: 视频文件路径列表
+        output_path: 输出视频路径
+        concat_file_path: concat文件路径
+    
     Returns:
         是否成功
     """
@@ -269,7 +453,7 @@ def concatenate_videos(video_paths: List[Path], output_path: Path, concat_file_p
         success, stdout, stderr = run_ffmpeg_command(command, timeout=600)
 
         if success:
-            logger.info(f"视频拼接成功: {output_path}")
+            logger.info(f"视频拼接成功(快速模式): {output_path}")
         else:
             logger.error(f"视频拼接失败: {stderr}")
 
@@ -448,6 +632,7 @@ def apply_video_speed(
 __all__ = [
     "check_ffmpeg_installed",
     "get_audio_duration",
+    "get_video_fps",
     "create_concat_file",
     "run_ffmpeg_command",
     "build_sentence_video_command",
