@@ -291,7 +291,7 @@ class APIKeyService(BaseService):
             elif model_type == "audio":
                 return ['gpt-4o-mini-tts', 'tts-1']
             elif model_type == "video":
-                return ['veo_3_1-fast', 'veo_3_1']
+                return ['veo3.1-components','veo_3_1-fast', 'veo_3_1']
             else:  # text
                 return ['gemini-3-flash-preview', 'deepseek-chat', 'deepseek-r1']
         

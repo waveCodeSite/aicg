@@ -138,7 +138,7 @@ class CustomProvider(BaseLLMProvider):
         except (KeyError, IndexError) as e:
             raise ValueError(f"无法从 Gemini 响应中提取图像数据: {e}")
 
-    async def generate_image_gemini(self, prompt: str, **kwargs: Any):
+    async def generate_image_gemini(self, prompt: str,aspectRatio: str="16:9",imageSize: str="2K", **kwargs: Any):
         """
         Gemini 生成图像（携程异步版本）
         支持 reference_images 参数 (Persona)
@@ -201,8 +201,8 @@ class CustomProvider(BaseLLMProvider):
 
         payload = {
             "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
-        }
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": aspectRatio,"imageSize": imageSize}},
+        }   
 
         async with self.semaphore:  # 控制最大并发
             async with aiohttp.ClientSession() as session:
