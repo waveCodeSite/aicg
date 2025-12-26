@@ -293,7 +293,7 @@ class APIKeyService(BaseService):
             elif model_type == "video":
                 return ['veo3.1-components','veo_3_1-fast', 'veo_3_1']
             else:  # text
-                return ['gemini-3-flash-preview', 'deepseek-chat', 'deepseek-r1']
+                return ['gemini-3-pro-preview','gemini-3-flash-preview', 'deepseek-chat', 'deepseek-r1']
         
         return []
 
