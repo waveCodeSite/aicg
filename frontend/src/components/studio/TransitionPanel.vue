@@ -244,13 +244,45 @@
       width="700px"
     >
       <el-form :model="editPromptFormData" label-width="100px">
+        <el-form-item label="API Key">
+          <el-select
+            v-model="editPromptFormData.apiKeyId"
+            placeholder="选择API Key"
+            style="width: 100%"
+            @change="handleEditApiKeyChange"
+          >
+            <el-option
+              v-for="key in apiKeys"
+              :key="key.id"
+              :label="`${key.provider} - ${key.name}`"
+              :value="key.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="文本模型">
+          <el-select
+            v-model="editPromptFormData.model"
+            placeholder="选择模型"
+            style="width: 100%"
+            :loading="loadingTextModels"
+          >
+            <el-option
+              v-for="model in textModelOptions"
+              :key="model"
+              :label="model"
+              :value="model"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="视频提示词">
           <div class="prompt-editor-header">
             <el-button
               size="small"
               type="primary"
-              :loading="regeneratingPrompt"
-              :disabled="regeneratingPrompt"
+              :loading="regeneratingPromptIds.has(editPromptFormData.transitionId)"
+              :disabled="regeneratingPromptIds.has(editPromptFormData.transitionId) || !editPromptFormData.apiKeyId || !editPromptFormData.model"
               @click="handleRegeneratePrompt"
             >
               <el-icon><Refresh /></el-icon>
@@ -359,7 +391,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, VideoCamera, CircleClose, Refresh, ZoomIn, Clock } from '@element-plus/icons-vue'
 import { useTransitionWorkflow } from '@/composables/useTransitionWorkflow'
@@ -412,7 +444,9 @@ const batchGenerateFormData = ref({
 
 const editPromptFormData = ref({
   transitionId: '',
-  prompt: ''
+  prompt: '',
+  apiKeyId: '',
+  model: ''
 })
 
 const singleGenerateFormData = ref({
@@ -432,8 +466,8 @@ const loadingVideoModels = ref(false)
 const showHistory = ref(false)
 const currentHistoryTransitionId = ref('')
 
-// 重新生成提示词相关
-const regeneratingPrompt = ref(false)
+// 重新生成提示词相关 - 使用Set支持并发
+const regeneratingPromptIds = ref(new Set())
 
 // 计算属性
 const canCreate = computed(() => {
@@ -499,7 +533,8 @@ watch(() => singleGenerateFormData.value.apiKeyId, async (newKeyId) => {
   loadingVideoModels.value = true
   try {
     const models = await api.get(`/api-keys/${newKeyId}/models?type=video`)
-    videoModelOptions.value = models || []
+    // API直接返回数组
+    videoModelOptions.value = Array.isArray(models) ? models : []
     if (videoModelOptions.value.length > 0) {
       singleGenerateFormData.value.videoModel = videoModelOptions.value[0]
     }
@@ -512,6 +547,25 @@ watch(() => singleGenerateFormData.value.apiKeyId, async (newKeyId) => {
     loadingVideoModels.value = false
   }
 })
+
+// 加载文本模型列表
+const loadTextModels = async (apiKeyId) => {
+  if (!apiKeyId) return
+  
+  loadingTextModels.value = true
+  try {
+    const response = await api.get(`/api-keys/${apiKeyId}/models`, {
+      params: { model_type: 'text' }
+    })
+    // API直接返回数组
+    textModelOptions.value = Array.isArray(response) ? response : []
+  } catch (error) {
+    console.error('加载文本模型失败:', error)
+    textModelOptions.value = []
+  } finally {
+    loadingTextModels.value = false
+  }
+}
 
 // 加载transitions
 watch(() => props.scriptId, (newId) => {
@@ -564,9 +618,28 @@ const handleBatchGenerateConfirm = async () => {
 const handleEditPrompt = (transition) => {
   editPromptFormData.value = {
     transitionId: transition.id,
-    prompt: transition.video_prompt || ''
+    prompt: transition.video_prompt || '',
+    apiKeyId: props.apiKeys?.[0]?.id || '',
+    model: textModelOptions.value[0] || ''
   }
+  
+  // 如果有API Key，加载模型列表
+  if (editPromptFormData.value.apiKeyId) {
+    loadTextModels(editPromptFormData.value.apiKeyId)
+  }
+  
   showEditPromptDialog.value = true
+}
+
+// API Key变化时加载模型
+const handleEditApiKeyChange = async (apiKeyId) => {
+  if (apiKeyId) {
+    await loadTextModels(apiKeyId)
+    // 自动选择第一个模型
+    if (textModelOptions.value.length > 0) {
+      editPromptFormData.value.model = textModelOptions.value[0]
+    }
+  }
 }
 
 const handleEditPromptConfirm = async () => {
@@ -703,19 +776,32 @@ const handleRegeneratePrompt = async () => {
     return
   }
 
-  if (!props.apiKeys || props.apiKeys.length === 0) {
-    ElMessage.error('请先配置API Key')
+  if (!editPromptFormData.value.apiKeyId) {
+    ElMessage.error('请选择API Key')
     return
   }
 
-  regeneratingPrompt.value = true
+  if (!editPromptFormData.value.model) {
+    ElMessage.error('请选择文本模型')
+    return
+  }
+
+  const transitionId = editPromptFormData.value.transitionId
+  
+  // 检查是否已在重新生成中
+  if (regeneratingPromptIds.value.has(transitionId)) {
+    ElMessage.warning('该过渡正在重新生成提示词，请稍候')
+    return
+  }
+
+  regeneratingPromptIds.value.add(transitionId)
 
   try {
     const response = await api.post(
-      `/movie/transitions/${editPromptFormData.value.transitionId}/regenerate-prompt`,
+      `/movie/transitions/${transitionId}/regenerate-prompt`,
       {
-        api_key_id: props.apiKeys[0].id,
-        model: textModelOptions.value[0] || 'gpt-4'
+        api_key_id: editPromptFormData.value.apiKeyId,
+        model: editPromptFormData.value.model
       }
     )
 
@@ -734,7 +820,7 @@ const handleRegeneratePrompt = async () => {
     console.error('重新生成提示词失败:', error)
     ElMessage.error('重新生成失败: ' + (error.response?.data?.detail || error.message))
   } finally {
-    regeneratingPrompt.value = false
+    regeneratingPromptIds.value.delete(transitionId)
   }
 }
 

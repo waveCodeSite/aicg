@@ -251,6 +251,12 @@ class TransitionService(BaseService):
             from_shot_id = str(from_shot.id)
             to_shot_id = str(to_shot.id)
             
+            # 检查是否在同一个场景内
+            if from_shot.scene_id != to_shot.scene_id:
+                logger.info(f"跳过跨场景过渡: {from_shot_id} (场景{from_shot.scene_id}) -> {to_shot_id} (场景{to_shot.scene_id})")
+                skipped_count += 1
+                continue
+            
             # 检查是否已存在
             if (from_shot_id, to_shot_id) in existing_pairs:
                 logger.info(f"跳过已存在的过渡: {from_shot_id} -> {to_shot_id}")

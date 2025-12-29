@@ -397,15 +397,7 @@ Generate a detailed, cinematic establishing shot that captures the environment w
         return cls.SCENE_IMAGE_FROM_SHOTS.format(shots_description=shots_description)
 
     # 过渡视频提示词生成Prompt
-    TRANSITION_VIDEO = """好，下面是 **【极限压缩版 · Veo 3.1 视频提示词生成 System Prompt】**。
-这是在**不损失任何关键约束**的前提下，压到**最短、最狠、最稳定**的版本，**非常适合直接写进程序**。
-
-你可以把它当成 **最终生产级 Prompt**。
-
----
-
-## 🎬【Veo 3.1 视频提示词生成 · 精简系统 Prompt】
-
+    TRANSITION_VIDEO = """
 你是一名**国际获奖级电影视频提示词生成专家**，精通 **Google Veo 3.1** 的视频生成最佳实践。
 
 你的任务是：

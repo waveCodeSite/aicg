@@ -1,348 +1,320 @@
-# 🎬 AICG - AI驱动的智能视频创作平台
+# AICG 内容分发平台
 
-<div align="center">
-
-**将长文本自动转换为高质量图文解说视频的一站式解决方案**
+> 🎬 **AI驱动的智能内容创作与分发平台** - 从文字到视频，一站式AI内容生产解决方案
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Node](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Vue](https://img.shields.io/badge/Vue-3.3+-4FC08D.svg)](https://vuejs.org/)
-
-[功能演示](#-产品演示) • [功能特性](#-核心功能) • [快速开始](#-快速开始) • [文档](#-文档)
-
-</div>
-
----
-
-## 📺 产品演示
-
-<div align="center">
-
-### 完整工作流程展示
-
-#### 1️⃣ 项目管理与章节识别
-![项目管理](docs/media/1.gif)
-*上传文档 → 智能章节识别 → 可视化编辑*
-
-#### 2️⃣ 导演引擎 - 批量生成素材
-![导演引擎](docs/media/2.gif)
-*批量生成提示词 → AI绘画 → TTS配音 → 实时预览*
-
-#### 3️⃣ 单句精细调整
-![单句调整](docs/media/3.gif)
-*查看句子详情 → 重新生成 → 替换素材*
-
-#### 4️⃣ 视频合成与配置
-![视频合成](docs/media/4.gif)
-*配置参数 → 选择BGM → 一键生成视频*
-
----
-
-### 🎥 成果展示
-
-**使用本项目生成的实际视频作品**：
-
-[![B站视频](https://img.shields.io/badge/B站-观看成果视频-00A1D6?logo=bilibili&logoColor=white)](https://www.bilibili.com/video/BV1PgmjBqE7F)
-
-> 点击上方链接观看使用AICG平台生成的完整视频作品，体验从文本到视频的全自动化流程效果。
-
-</div>
-
----
-
-## 🌟 项目亮点
-
-### 💰 极致性价比
-通过灵活的第三方API集成，实现**低至0.04元/张图片**的成本控制，让视频创作不再昂贵。
-
-### 🎯 全自动化流程
-从文本上传到视频生成，**一键完成**：
-- 📝 智能章节识别
-- 🎨 AI图片生成
-- 🗣️ 情感化语音合成
-- 🎬 自动视频剪辑
-- 📊 精准字幕同步
-
-### ⚡ 高效异步架构
-基于Celery的异步任务处理，支持：
-- 🚀 高并发批量生成
-- 💾 智能增量缓存
-- 📈 实时进度追踪
-- 🔄 断点续传
-
-### 🎛️ 专业级视频控制
-- **Ken Burns效果**：动态缩放和平移
-- **BGM混合**：可配置音量的背景音乐
-- **视频加速**：0.5x-2.0x速度调整
-- **LLM字幕纠错**：智能修正识别错误
-- **多分辨率支持**：竖屏/横屏/方形
-
----
-
-## ✨ 核心功能
-
-### 📚 智能内容管理
-
-<table>
-<tr>
-<td width="50%">
-
-#### 📝 文本导入项目 🆕
-- ✅ 支持TXT、DOCX、PDF、EPUB等多格式
-- ✅ 智能章节识别与解析
-- ✅ 可视化章节编辑器
-- ✅ 章节合并/拆分/忽略
-- ✅ 实时预览与调整
-
-</td>
-<td width="50%">
-
-#### 🎯 导演引擎（Director Engine）
-- ✅ 批量生成提示词
-- ✅ 批量生成图片
-- ✅ 批量生成音频
-- ✅ 单句精细调整
-- ✅ 素材预览与替换
-
-</td>
-</tr>
-</table>
-
-### 🎨 AI素材生成
-
-<table>
-<tr>
-<td width="33%">
-
-#### 🖼️ 图片生成
-- Flux系列模型
-- SDXL系列模型
-- Sora_Image（低成本）
-- 自定义模型支持
-- 风格一致性控制
-
-</td>
-<td width="33%">
-
-#### 🎤 语音合成
-- 硅基流动 index-tts2
-- 情感丰富的中文配音
-- 多种音色选择
-- 自然语音节奏
-- 高保真音质
-
-</td>
-<td width="33%">
-
-#### 🤖 LLM集成
-- GPT-4o系列
-- Claude 3.5系列
-- DeepSeek系列
-- 自定义模型
-- 字幕智能纠错
-
-</td>
-</tr>
-</table>
-
-### 🎬 专业视频合成
-
-| 功能 | 说明 | 配置项 |
-|------|------|--------|
-| **分辨率** | 竖屏(9:16)、横屏(16:9)、方形(1:1) | ✅ 可配置 |
-| **帧率** | 24/30/60 FPS | ✅ 可配置 |
-| **Ken Burns效果** | 动态缩放+平移，电影级运镜 | ✅ 可配置速度 |
-| **字幕样式** | 字体大小、颜色、位置 | ✅ 可配置 |
-| **BGM混合** | 背景音乐自动循环与混合 | ✅ 可配置音量(0-50%) |
-| **视频加速** | 0.5x-2.0x速度调整，保持音调 | ✅ 可配置 |
-| **LLM纠错** | 智能修正字幕错别字 | ✅ 可选启用 |
-
-### 📤 导出与发布 🆕
-
-<table>
-<tr>
-<td width="33%">
-
-#### 🎬 剪映素材导出
-- ✅ 一键导出剪映草稿格式
-- ✅ 包含所有图片和音频素材
-- ✅ 支持直接导入剪映专业版
-
-</td>
-<td width="33%">
-
-#### 📺 B站账号管理
-- ✅ 扫码登录B站账号
-- ✅ 多账号管理
-- ✅ Cookie自动维护
-- ✅ 登录状态监控
-
-</td>
-<td width="33%">
-
-#### 🚀 B站稿件发布
-- ✅ 视频一键发布到B站
-- ✅ 自定义分区、标签、封面
-- ✅ 发布状态追踪
-
-</td>
-</tr>
-</table>
-
-### 🔐 API密钥管理
-
-- ✅ 多供应商支持（OpenAI、Anthropic、硅基流动、自定义）
-- ✅ 多密钥配置与切换
-- ✅ 密钥状态监控
-- ✅ 用量统计（即将推出）
-
----
-
-## 🚀 快速开始
-
-### 📋 前置要求
-
-| 工具 | 版本要求 | 说明 |
-|------|---------|------|
-| **Node.js** | >= 18.0.0 | 前端运行环境 |
-| **Python** | >= 3.11 | 后端运行环境 |
-| **uv** | 最新版 | Python包管理器 |
-| **FFmpeg** | 最新版 | 视频处理核心 |
-| **Docker** | 最新版 | 基础设施服务 |
-
-### 🔑 API平台注册
-
-本项目依赖第三方AI模型，需要注册以下平台：
-
-1. **[推荐] 硅基流动** (TTS/大模型)
-   - 注册链接：[https://cloud.siliconflow.cn/i/63zI7Mdc](https://cloud.siliconflow.cn/i/63zI7Mdc)
-   - 用途：高质量中文TTS、大模型服务
-
-2. **[低成本] 第三方中转平台** (Sora_Image)
-   - 注册链接：[https://api.vectorengine.ai/register?aff=YVx7](https://api.vectorengine.ai/register?aff=YVx7)
-   - 用途：低成本图片生成（约0.04元/张）
-
-### 📦 快速安装
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/869413421/aicon2.git
-cd aicon2
-
-# 2. 配置环境变量
-cp .env.example .env
-# 编辑.env文件，填入必要配置
-
-# 3. 启动基础设施（PostgreSQL, Redis, MinIO）
-docker-compose up -d
-
-# 4. 启动后端
-cd backend
-uv sync
-alembic upgrade head
-uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# 5. 启动Celery Worker（新终端）
-cd backend
-uv run celery -A src.tasks.task worker --loglevel=info
-
-# 6. 启动前端（新终端）
-cd frontend
-npm install
-npm run dev
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Vue](https://img.shields.io/badge/vue-3.x-green.svg)](https://vuejs.org/)
+[![FastAPI](https://img.shields.io/badge/fastapi-latest-009688.svg)](https://fastapi.tiangolo.com/)
+
+## 🌟 核心亮点
+
+### 🎥 AI电影工作室 - 重磅功能
+
+**从文字到电影，全自动AI电影生成流水线**
+
+- **📝 智能剧本解析** - 自动提取场景、分镜、角色，构建完整电影结构
+- **🎨 角色定妆照生成** - AI生成一致性角色形象，支持多视角参考图
+- **🖼️ 场景图生成** - 为每个场景生成氛围图，确保视觉连贯性
+- **🎞️ 关键帧生成** - 智能生成分镜关键帧，支持前后帧参考保持连续性
+- **🎬 过渡视频生成** - 自动生成分镜间过渡视频，实现流畅衔接
+- **📜 生成历史管理** - 记录所有生成版本，支持历史版本切换和对比
+- **🔄 智能提示词重生成** - 使用LLM自动优化视频生成提示词
+- **🎵 BGM配乐** - 智能配乐系统，为电影添加背景音乐
+- **📦 一键合成** - 自动合成所有素材，输出完整电影
+
+**工作流程**：
+```
+文字剧本 → 角色提取 → 场景分析 → 分镜生成 → 
+关键帧渲染 → 过渡视频 → BGM配乐 → 最终合成 → 完整电影
 ```
 
-### ✅ 验证安装
+### 🎨 AI图文说内容生成
 
-访问以下地址确认服务正常:
+**传统图文说视频制作的智能化升级**
 
-- 🌐 **前端应用**: http://localhost:3000
-- 📚 **API文档**: http://localhost:8000/docs
-- 📦 **MinIO控制台**: http://localhost:9001 (minioadmin/minioadmin123)
+- **📖 智能分段** - 自动将长文本分割为适合视频的段落
+- **🎯 AI导演引擎** - 智能生成每个段落的视觉提示词
+- **🖼️ 批量图片生成** - 支持多种AI模型，批量生成配图
+- **🎙️ 智能配音** - 文字转语音，支持多种音色和语速
+- **🎬 自动合成** - 图片、配音、字幕自动合成为视频
 
----
+### 📺 B站一键发布
+
+- **🚀 自动上传** - 视频自动上传到B站
+- **📝 智能标题** - AI生成吸引人的标题和简介
+- **🏷️ 标签推荐** - 智能推荐相关标签
+- **📊 发布管理** - 统一管理所有发布任务
 
 ## 🏗️ 技术架构
 
 ### 后端技术栈
 
-```
-FastAPI + SQLAlchemy + Celery + PostgreSQL + Redis + MinIO
-```
-
-- **FastAPI**: 高性能异步Web框架
-- **SQLAlchemy**: ORM与数据库管理
-- **Celery**: 分布式异步任务队列
-- **PostgreSQL**: 主数据库
-- **Redis**: 缓存与消息队列
-- **MinIO**: 对象存储（图片、音频、视频）
+- **框架**: FastAPI + SQLAlchemy + Alembic
+- **数据库**: PostgreSQL
+- **任务队列**: Celery + Redis
+- **存储**: MinIO (S3兼容)
+- **AI集成**: 
+  - 文本生成: OpenAI GPT / Google Gemini
+  - 图片生成: Stable Diffusion / DALL-E / Gemini
+  - 视频生成: VectorEngine / Runway
+  - 语音合成: Azure TTS / 其他TTS服务
 
 ### 前端技术栈
 
+- **框架**: Vue 3 + Vite
+- **UI库**: Element Plus
+- **状态管理**: Pinia
+- **路由**: Vue Router
+- **HTTP客户端**: Axios
+
+### 核心特性
+
+- ✅ **异步任务处理** - Celery分布式任务队列
+- ✅ **实时状态追踪** - WebSocket实时更新
+- ✅ **模块化设计** - 清晰的代码结构和职责分离
+- ✅ **RESTful API** - 标准化的API设计
+- ✅ **数据库迁移** - Alembic版本控制
+- ✅ **对象存储** - MinIO文件管理
+- ✅ **多模型支持** - 灵活切换不同AI服务商
+
+## 📁 项目结构
+
 ```
-Vue 3 + Element Plus + Pinia + Vite
+aicon2/
+├── backend/                 # 后端服务
+│   ├── src/
+│   │   ├── api/            # API路由和端点
+│   │   │   ├── v1/         # API v1版本
+│   │   │   │   ├── movie_*.py    # 电影生成相关API
+│   │   │   │   ├── generation_history.py  # 生成历史API
+│   │   │   │   └── ...
+│   │   │   └── schemas/    # Pydantic数据模型
+│   │   ├── models/         # SQLAlchemy数据模型
+│   │   ├── services/       # 业务逻辑层
+│   │   │   ├── movie.py           # 电影服务
+│   │   │   ├── generation_history_service.py
+│   │   │   └── ...
+│   │   ├── tasks/          # Celery异步任务
+│   │   ├── core/           # 核心配置
+│   │   └── utils/          # 工具函数
+│   ├── migrations/         # 数据库迁移
+│   └── tests/             # 测试文件
+│
+├── frontend/               # 前端应用
+│   ├── src/
+│   │   ├── views/         # 页面组件
+│   │   │   └── studio/    # 电影工作室
+│   │   ├── components/    # 可复用组件
+│   │   │   └── studio/    # 工作室组件
+│   │   ├── composables/   # Vue组合式函数
+│   │   ├── services/      # API服务
+│   │   ├── stores/        # Pinia状态管理
+│   │   └── utils/         # 工具函数
+│   └── public/            # 静态资源
+│
+└── docs/                  # 项目文档
+    ├── movie_generation_workflow.md  # 电影生成流程文档
+    └── ...
 ```
 
-- **Vue 3**: 渐进式JavaScript框架
-- **Element Plus**: 企业级UI组件库
-- **Pinia**: 状态管理
-- **Vite**: 下一代前端构建工具
+## 🚀 快速开始
 
----
+### 环境要求
 
-## 📖 文档
+- Python 3.12+
+- Node.js 18+
+- PostgreSQL 14+
+- Redis 6+
+- MinIO (或其他S3兼容存储)
 
-- 📦 **[安装部署指南](docs/INSTALLATION.md)** - 详细的安装步骤、GPU加速配置、Bilibili工具配置
-- 💻 **[开发指南](docs/DEVELOPMENT.md)** - 项目结构、开发环境、代码规范、测试指南
-- ✨ **[功能详细说明](docs/FEATURES.md)** - 各功能模块的详细介绍和使用教程
-- 📺 **[Bilibili集成方案](docs/bilibili_integration_plan.md)** - B站发布功能的技术方案
+### 后端启动
 
----
+```bash
+cd backend
 
-## 🎯 成本优化建议
+# 创建虚拟环境
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-### 推荐配置（极致性价比）
+# 安装依赖
+pip install -r requirements.txt
 
-| 步骤 | 推荐服务 | 成本 |
-|------|---------|------|
-| **提示词生成** | GPT-4o-mini / DeepSeek | ~¥0.001/句 |
-| **图片生成** | Sora_Image（中转平台） | ~¥0.04/张 |
-| **语音合成** | 硅基流动 index-tts2 | ~¥0.02/句 |
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，配置数据库、Redis、MinIO等
 
-**示例成本计算**（100句视频）：
-- 提示词：100 × ¥0.001 = ¥0.1
-- 图片：100 × ¥0.04 = ¥4.0
-- 语音：100 × ¥0.02 = ¥2.0
-- **总计：约¥6.1**
+# 运行数据库迁移
+alembic upgrade head
 
----
+# 启动后端服务
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
-## 📄 License
+# 启动Celery Worker（新终端）
+celery -A src.tasks.app worker --loglevel=info
+```
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+### 前端启动
 
----
+```bash
+cd frontend
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+```
+
+访问 `http://localhost:3000` 即可使用系统。
+
+## 🎯 主要功能模块
+
+### 1. 项目管理
+- 创建和管理内容项目
+- 支持文本导入和在线编辑
+- 项目版本控制
+
+### 2. 电影工作室
+- **角色管理**: 提取角色、生成定妆照
+- **场景管理**: 场景提取、场景图生成
+- **分镜管理**: 分镜提取、关键帧生成
+- **过渡视频**: 创建过渡、生成视频、提示词优化
+- **素材检查**: 自动检查所有素材完整性
+- **电影合成**: 一键合成完整电影
+
+### 3. 图文说工作室
+- 段落分割和管理
+- 批量图片生成
+- 配音生成
+- 视频合成
+
+### 4. API密钥管理
+- 支持多个AI服务商
+- 密钥安全存储
+- 使用统计
+
+### 5. 视频任务管理
+- 任务列表和状态追踪
+- 失败重试
+- 批量操作
+
+### 6. B站发布
+- 视频上传
+- 元数据编辑
+- 发布状态管理
+
+## 🔧 配置说明
+
+### 环境变量
+
+主要环境变量配置（`.env`文件）：
+
+```env
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/aicg
+
+# Redis配置
+REDIS_URL=redis://localhost:6379/0
+
+# MinIO配置
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=aicg-platform
+
+# AI服务配置
+OPENAI_API_KEY=your-openai-key
+GEMINI_API_KEY=your-gemini-key
+
+# 应用配置
+SECRET_KEY=your-secret-key
+DEBUG=true
+```
+
+## 📊 数据库设计
+
+### 核心表结构
+
+- **projects** - 项目信息
+- **chapters** - 章节管理
+- **movie_scripts** - 电影剧本
+- **movie_scenes** - 场景信息
+- **movie_shots** - 分镜信息
+- **movie_characters** - 角色信息
+- **movie_shot_transitions** - 过渡视频
+- **movie_generation_history** - 生成历史记录（统一表）
+- **video_tasks** - 视频任务
+- **api_keys** - API密钥
+
+## 🎨 生成历史功能
+
+系统为所有生成内容提供完整的历史记录管理：
+
+- **版本追踪**: 记录每次生成的结果
+- **历史切换**: 随时切换到任意历史版本
+- **提示词记录**: 保存每次生成使用的提示词
+- **模型信息**: 记录使用的AI模型
+- **时间戳**: 完整的生成时间记录
+
+支持的资源类型：
+- 场景图 (scene_image)
+- 关键帧 (shot_keyframe)
+- 角色头像 (character_avatar)
+- 过渡视频 (transition_video)
+
+## 🤝 贡献指南
+
+欢迎贡献代码、报告问题或提出新功能建议！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 📝 开发日志
+
+### v2.0.0 - AI电影工作室 (2025-12-29)
+
+**🎬 重磅更新：AI电影生成功能**
+
+- ✨ 完整的电影生成工作流
+- ✨ 角色、场景、分镜智能提取
+- ✨ 关键帧和过渡视频生成
+- ✨ 生成历史管理系统
+- ✨ LLM驱动的提示词优化
+- ✨ 一键电影合成
+
+### v1.0.0 - 基础功能 (2024)
+
+- 🎨 图文说视频生成
+- 📺 B站自动发布
+- 🔑 API密钥管理
+- 📊 任务管理系统
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
 
 ## 🙏 致谢
 
 感谢以下开源项目和服务：
 
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [Vue.js](https://vuejs.org/)
-- [Element Plus](https://element-plus.org/)
-- [FFmpeg](https://ffmpeg.org/)
-- [Celery](https://docs.celeryq.dev/)
-- [硅基流动](https://cloud.siliconflow.cn/)
-- [biliup-rs](https://github.com/biliup/biliup-rs)
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代化的Python Web框架
+- [Vue.js](https://vuejs.org/) - 渐进式JavaScript框架
+- [Element Plus](https://element-plus.org/) - Vue 3 UI组件库
+- [Celery](https://docs.celeryq.dev/) - 分布式任务队列
+- [SQLAlchemy](https://www.sqlalchemy.org/) - Python ORM
+- [MinIO](https://min.io/) - 高性能对象存储
+
+以及所有AI服务提供商：OpenAI、Google、Azure等
+
+## 📧 联系方式
+
+- 项目主页: [GitHub](https://github.com/869413421/aicon2)
+- 问题反馈: [Issues](https://github.com/869413421/aicon2/issues)
 
 ---
 
-<div align="center">
-
-**⭐ 如果这个项目对你有帮助，请给个Star！**
-
-Made with ❤️ by AICG Team
-
-</div>
+⭐ 如果这个项目对你有帮助，请给个Star支持一下！
