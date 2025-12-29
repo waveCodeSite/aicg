@@ -432,7 +432,7 @@ const handleCheckMaterials = async () => {
     const missingCharacterAvatars = characters.filter(c => !c.avatar_url).length
     const missingSceneImages = scenes.filter(s => !s.scene_image_url).length
     const missingKeyframes = shots.filter(s => !s.keyframe_url).length
-    const missingTransitionVideos = transitions.filter(t => !t.video_url || t.status === 'failed').length
+    const missingTransitionVideos = transitions.filter(t => !t.video_url).length
     
     materialCheckResult.value = {
       ready: missingCharacterAvatars === 0 && 

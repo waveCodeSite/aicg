@@ -63,7 +63,6 @@ async def test_concatenation_from_chapter(chapter_id: str, args):
                 select(MovieShotTransition)
                 .where(MovieShotTransition.script_id == script.id)
                 .where(MovieShotTransition.video_url.isnot(None))
-                .where(MovieShotTransition.status == 'completed')
                 .order_by(MovieShotTransition.order_index)
                 # .limit(6)
             )

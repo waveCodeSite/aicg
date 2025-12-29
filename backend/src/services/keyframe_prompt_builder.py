@@ -131,13 +131,27 @@ ABSOLUTELY FORBIDDEN:
         )
         
         # 组合完整提示词
+#         full_prompt = f"""
+# {KeyframePromptBuilder.CORE_STYLE}
+
+# SCENE CONTEXT:
+# {scene_context}
+
+# {previous_shot_context}
+
+# SHOT DESCRIPTION:
+# {shot_description}
+# {dialogue_hint}
+
+# {KeyframePromptBuilder.TECHNICAL_SPECS}
+
+# {forbidden_elements}
+
+# Remember: This is a REAL PHOTOGRAPH from a LIVE-ACTION FILM, not a digital creation.
+# """ 
+
         full_prompt = f"""
 {KeyframePromptBuilder.CORE_STYLE}
-
-SCENE CONTEXT:
-{scene_context}
-
-{previous_shot_context}
 
 SHOT DESCRIPTION:
 {shot_description}

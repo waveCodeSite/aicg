@@ -145,13 +145,16 @@ cp .env.example .env
 # 编辑 .env 文件，配置数据库、Redis、MinIO等
 
 # 运行数据库迁移
-alembic upgrade head
+uv run alembic upgrade head
 
 # 启动后端服务
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 # 启动Celery Worker（新终端）
-celery -A src.tasks.app worker --loglevel=info
+uv run celery -A src.tasks.app worker --loglevel=info
+
+# 启动Celery Worker 定时任务（新终端）
+uv run celery -A src.tasks.app beat --loglevel=info
 ```
 
 ### 前端启动

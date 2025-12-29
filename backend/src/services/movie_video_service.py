@@ -193,9 +193,9 @@ class MovieVideoService(BaseService):
             video_paths,
             final_video_path,
             concat_file_path,
-            mode="crossfade",
-            transition_type="fade",
-            transition_duration=0.5
+            mode="fast",
+            # transition_type="fade",
+            # transition_duration=0.5
         )
         
         if not success:
