@@ -37,7 +37,8 @@ async def _generate_keyframe_worker(
     model: Optional[str],
     semaphore: asyncio.Semaphore,
     previous_keyframe_url: Optional[str] = None,
-    previous_shot: Optional[MovieShot] = None
+    previous_shot: Optional[MovieShot] = None,
+    prompt: Optional[str] = None  # 新增：用于保存到历史记录
 ):
     """
     单个分镜关键帧生成的 Worker - 负责生成、下载、上传，不负责 Commit
@@ -135,12 +136,29 @@ async def _generate_keyframe_worker(
 
             # 4. 更新对象属性 (不 Commit) - 使用新的keyframe_url字段
             shot.keyframe_url = object_key
+            
+            # 5. 创建生成历史记录
+            from src.services.generation_history_service import GenerationHistoryService
+            from src.models.movie import GenerationType, MediaType
+            from sqlalchemy.orm import object_session
+            
+            db_session = object_session(shot)
+            history_service = GenerationHistoryService(db_session)
+            await history_service.create_history(
+                resource_type=GenerationType.SHOT_KEYFRAME,
+                resource_id=str(shot.id),
+                result_url=object_key,
+                prompt=final_prompt,  # 使用生成时的实际prompt
+                media_type=MediaType.IMAGE,
+                model=model,
+                api_key_id=str(api_key.id) if api_key else None
+            )
                 
-            logger.info(f"关键帧生成并存储完成: shot_id={shot.id}, key={object_key}")
+            logger.info(f'[批量生成] 关键帧生成并存储完成: shot_id={shot.id}, key={object_key}')
             return True
             
         except Exception as e:
-            logger.error(f"Worker 生成关键帧失败 [shot_id={shot.id}]: {e}")
+            logger.error(f'[批量生成] Worker 生成关键帧失败 [shot_id={shot.id}]: {e}')
             return False
 
 
@@ -580,6 +598,22 @@ class VisualIdentityService(BaseService):
         
         # 7. 更新分镜
         shot.keyframe_url = object_key
+        
+        # 8. 创建生成历史记录
+        from src.services.generation_history_service import GenerationHistoryService
+        from src.models.movie import GenerationType, MediaType
+        
+        history_service = GenerationHistoryService(self.db_session)
+        await history_service.create_history(
+            resource_type=GenerationType.SHOT_KEYFRAME,
+            resource_id=str(shot.id),
+            result_url=object_key,
+            prompt=final_prompt,
+            media_type=MediaType.IMAGE,
+            model=model,
+            api_key_id=str(api_key.id) if api_key else None
+        )
+        
         await self.db_session.commit()
         
         logger.info(f"关键帧生成完成: shot_id={shot_id}")

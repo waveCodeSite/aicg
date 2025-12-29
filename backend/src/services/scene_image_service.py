@@ -94,6 +94,24 @@ async def _generate_scene_image_worker(
 
             # 4. 更新对象属性 (不 Commit)
             scene.scene_image_url = object_key
+            
+            # 5. 创建生成历史记录
+            # 注意：scene对象已经绑定到session，我们需要获取它的session
+            from src.services.generation_history_service import GenerationHistoryService
+            from src.models.movie import GenerationType, MediaType
+            from sqlalchemy.orm import object_session
+            
+            db_session = object_session(scene)
+            history_service = GenerationHistoryService(db_session)
+            await history_service.create_history(
+                resource_type=GenerationType.SCENE_IMAGE,
+                resource_id=str(scene.id),
+                result_url=object_key,
+                prompt=final_prompt,
+                media_type=MediaType.IMAGE,
+                model=model,
+                api_key_id=str(api_key.id) if api_key else None
+            )
                 
             logger.info(f"场景图生成并存储完成: scene_id={scene.id}, key={object_key}")
             return True

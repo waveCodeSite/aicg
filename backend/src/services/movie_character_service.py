@@ -359,6 +359,21 @@ class MovieCharacterService(BaseService):
                 refs.insert(0, object_key)
                 char.reference_images = refs
             
+            # 7. 创建生成历史记录
+            from src.services.generation_history_service import GenerationHistoryService
+            from src.models.movie import GenerationType, MediaType
+            
+            history_service = GenerationHistoryService(self.db_session)
+            await history_service.create_history(
+                resource_type=GenerationType.CHARACTER_AVATAR,
+                resource_id=str(char.id),
+                result_url=object_key,
+                prompt=enhanced_prompt,  # 使用增强后的提示词
+                media_type=MediaType.IMAGE,
+                model=model,
+                api_key_id=str(api_key.id) if api_key else None
+            )
+            
             await self.db_session.commit()
             return object_key
             

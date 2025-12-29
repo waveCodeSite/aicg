@@ -4,7 +4,7 @@
 
 from enum import Enum
 from typing import List, Optional
-from sqlalchemy import Column, String, Text, Integer, ForeignKey, Index, JSON, select
+from sqlalchemy import Column, String, Text, Integer, ForeignKey, Index, JSON, select, Boolean
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import relationship
 from .base import BaseModel
@@ -14,6 +14,53 @@ class ScriptStatus(str, Enum):
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+
+class GenerationType(str, Enum):
+    """生成类型枚举"""
+    SCENE_IMAGE = "scene_image"
+    SHOT_KEYFRAME = "shot_keyframe"
+    CHARACTER_AVATAR = "character_avatar"
+    TRANSITION_VIDEO = "transition_video"
+
+class MediaType(str, Enum):
+    """媒体类型枚举"""
+    IMAGE = "image"
+    VIDEO = "video"
+
+class MovieGenerationHistory(BaseModel):
+    """电影生成历史统一记录表"""
+    __tablename__ = 'movie_generation_history'
+    
+    # 资源类型和ID（使用多态关联）
+    resource_type = Column(String(50), nullable=False, index=True, comment="资源类型: scene_image/shot_keyframe/character_avatar/transition_video")
+    resource_id = Column(PostgreSQLUUID(as_uuid=True), nullable=False, index=True, comment="资源ID（scene_id/shot_id/character_id/transition_id）")
+    
+    # 媒体类型
+    media_type = Column(String(20), nullable=False, index=True, comment="媒体类型: image/video")
+    
+    # 生成结果
+    result_url = Column(String(500), nullable=False, comment="生成的图片/视频URL")
+    prompt = Column(Text, nullable=False, comment="生成时使用的提示词")
+    
+    # 生成参数
+    model = Column(String(100), comment="使用的模型名称")
+    api_key_id = Column(PostgreSQLUUID(as_uuid=True), ForeignKey('api_keys.id'), nullable=True, index=True, comment="使用的API Key")
+    
+    # 选择状态
+    is_selected = Column(Boolean, default=False, index=True, comment="是否被选中使用")
+    
+    # 关系
+    api_key = relationship("APIKey")
+    
+    # 复合索引
+    __table_args__ = (
+        Index('idx_resource_type_id', 'resource_type', 'resource_id'),
+        Index('idx_resource_selected', 'resource_type', 'resource_id', 'is_selected'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<MovieGenerationHistory(id={self.id}, type={self.resource_type}, media={self.media_type})>"
+
 
 class MovieScript(BaseModel):
     """电影剧本模型 - 关联到章节"""
@@ -45,6 +92,13 @@ class MovieScene(BaseModel):
     # 关系
     script = relationship("MovieScript", back_populates="scenes")
     shots = relationship("MovieShot", back_populates="scene", cascade="all, delete-orphan", order_by="MovieShot.order_index")
+    generation_history = relationship(
+        "MovieGenerationHistory",
+        primaryjoin="and_(MovieScene.id==foreign(MovieGenerationHistory.resource_id), "
+                    "MovieGenerationHistory.resource_type=='scene_image')",
+        cascade="all, delete-orphan",
+        viewonly=False
+    )
 
     def __repr__(self) -> str:
         return f"<MovieScene(id={self.id}, script_id={self.script_id}, order={self.order_index})>"
@@ -64,6 +118,13 @@ class MovieShot(BaseModel):
     
     # 关系
     scene = relationship("MovieScene", back_populates="shots")
+    generation_history = relationship(
+        "MovieGenerationHistory",
+        primaryjoin="and_(MovieShot.id==foreign(MovieGenerationHistory.resource_id), "
+                    "MovieGenerationHistory.resource_type=='shot_keyframe')",
+        cascade="all, delete-orphan",
+        viewonly=False
+    )
 
     def __repr__(self) -> str:
         # 使用 object.__repr__ 避免访问可能导致 DetachedInstanceError 的属性
@@ -95,6 +156,13 @@ class MovieShotTransition(BaseModel):
     to_shot = relationship("MovieShot", foreign_keys=[to_shot_id])
     api_key = relationship("APIKey", foreign_keys=[api_key_id])
     user = relationship("User", foreign_keys=[user_id])
+    generation_history = relationship(
+        "MovieGenerationHistory",
+        primaryjoin="and_(MovieShotTransition.id==foreign(MovieGenerationHistory.resource_id), "
+                    "MovieGenerationHistory.resource_type=='transition_video')",
+        cascade="all, delete-orphan",
+        viewonly=False
+    )
 
     def __repr__(self) -> str:
         return f"<MovieShotTransition(id={self.id}, from={self.from_shot_id}, to={self.to_shot_id})>"
@@ -121,6 +189,13 @@ class MovieCharacter(BaseModel):
     
     # 关系
     project = relationship("Project")
+    generation_history = relationship(
+        "MovieGenerationHistory",
+        primaryjoin="and_(MovieCharacter.id==foreign(MovieGenerationHistory.resource_id), "
+                    "MovieGenerationHistory.resource_type=='character_avatar')",
+        cascade="all, delete-orphan",
+        viewonly=False
+    )
 
     def __repr__(self) -> str:
         return f"<MovieCharacter(id={self.id}, name={self.name})>"
