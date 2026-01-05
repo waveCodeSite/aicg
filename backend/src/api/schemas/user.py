@@ -3,7 +3,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
@@ -76,6 +76,7 @@ class UserResponse(UUIDMixin):
     avatar_url: Optional[str]
     is_active: bool
     is_verified: bool
+    role: str = Field(default="user", description="用户角色")
     preferences: Optional[Dict[str, Any]]
     timezone: str
     language: str
@@ -109,6 +110,7 @@ class UserResponse(UUIDMixin):
             avatar_url=user.avatar_url,
             is_active=user.is_active,
             is_verified=user.is_verified,
+            role=getattr(user, 'role', 'user'),
             preferences=preferences,
             timezone=getattr(user, 'timezone', 'Asia/Shanghai'),
             language=getattr(user, 'language', 'zh-CN'),
@@ -229,6 +231,30 @@ class AvatarInfoResponse(BaseModel):
     }
 
 
+class UserUpdate(BaseModel):
+    """管理员更新用户信息"""
+    display_name: Optional[str] = Field(None, max_length=100, description="显示名称")
+    email: Optional[str] = Field(None, max_length=100, description="邮箱")
+    is_active: Optional[bool] = Field(None, description="是否激活")
+    is_verified: Optional[bool] = Field(None, description="是否已验证")
+    role: Optional[str] = Field(None, description="用户角色")
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v):
+        if v and v not in ['admin', 'user']:
+            raise ValueError('角色必须是admin或user')
+        return v
+
+
+class UserListResponse(BaseModel):
+    """用户列表响应"""
+    items: List[UserResponse] = Field(..., description="用户列表")
+    total: int = Field(..., description="总数")
+    skip: int = Field(..., description="跳过数")
+    limit: int = Field(..., description="限制数")
+
+
 __all__ = [
     "UserUpdateRequest",
     "PasswordChangeRequest",
@@ -239,4 +265,6 @@ __all__ = [
     "AvatarUploadResponse",
     "AvatarDeleteResponse",
     "AvatarInfoResponse",
+    "UserUpdate",
+    "UserListResponse",
 ]

@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     )
 
     # =============================================================================
+    # 用户注册和认证配置
+    # =============================================================================
+    ENABLE_REGISTRATION: bool = Field(
+        default=True,
+        env="ENABLE_REGISTRATION",
+        description="是否允许用户注册"
+    )
+
+    # =============================================================================
     # JWT配置
     # =============================================================================
     JWT_SECRET_KEY: str = Field(
@@ -76,15 +85,49 @@ class Settings(BaseSettings):
     )
 
     # =============================================================================
-    # MinIO对象存储配置
+    # 对象存储配置 (支持S3协议)
     # =============================================================================
-    MINIO_ENDPOINT: str = Field(default="localhost:9000", env="MINIO_ENDPOINT")
-    MINIO_PUBLIC_URL: Optional[str] = Field(default=None, env="MINIO_PUBLIC_URL")
-    MINIO_ACCESS_KEY: str = Field(default="minioadmin", env="MINIO_ACCESS_KEY")
-    MINIO_SECRET_KEY: str = Field(default="minioadmin", env="MINIO_SECRET_KEY")
-    MINIO_SECURE: bool = False
-    MINIO_BUCKET_NAME: str = "aicg-files"
-    MINIO_REGION: str = "us-east-1"
+    STORAGE_TYPE: str = Field(
+        default="minio",
+        env="STORAGE_TYPE",
+        description="存储类型: minio, s3, aliyun-oss, etc"
+    )
+    STORAGE_ENDPOINT: str = Field(default="localhost:9000", env="STORAGE_ENDPOINT")
+    STORAGE_PUBLIC_URL: Optional[str] = Field(default=None, env="STORAGE_PUBLIC_URL")
+    STORAGE_ACCESS_KEY: str = Field(default="minioadmin", env="STORAGE_ACCESS_KEY")
+    STORAGE_SECRET_KEY: str = Field(default="minioadmin", env="STORAGE_SECRET_KEY")
+    STORAGE_SECURE: bool = Field(default=False, env="STORAGE_SECURE")
+    STORAGE_BUCKET_NAME: str = Field(default="aicg-files", env="STORAGE_BUCKET_NAME")
+    STORAGE_REGION: str = Field(default="us-east-1", env="STORAGE_REGION")
+
+    # 向后兼容的MinIO配置
+    @property
+    def MINIO_ENDPOINT(self) -> str:
+        return self.STORAGE_ENDPOINT
+
+    @property
+    def MINIO_PUBLIC_URL(self) -> Optional[str]:
+        return self.STORAGE_PUBLIC_URL
+
+    @property
+    def MINIO_ACCESS_KEY(self) -> str:
+        return self.STORAGE_ACCESS_KEY
+
+    @property
+    def MINIO_SECRET_KEY(self) -> str:
+        return self.STORAGE_SECRET_KEY
+
+    @property
+    def MINIO_SECURE(self) -> bool:
+        return self.STORAGE_SECURE
+
+    @property
+    def MINIO_BUCKET_NAME(self) -> str:
+        return self.STORAGE_BUCKET_NAME
+
+    @property
+    def MINIO_REGION(self) -> str:
+        return self.STORAGE_REGION
 
     # =============================================================================
     # 头像上传配置

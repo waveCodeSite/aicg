@@ -1,5 +1,5 @@
 """
-MinIO对象存储客户端 - 文件存储和管理
+对象存储客户端 - 支持S3协议的多种存储服务
 """
 
 import uuid
@@ -11,6 +11,8 @@ import aiofiles
 from fastapi import UploadFile
 from minio import Minio
 from minio.error import S3Error
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.logging import get_logger
@@ -23,18 +25,41 @@ class StorageError(Exception):
     pass
 
 
-class MinIOStorage:
-    """MinIO对象存储客户端"""
+class S3Storage:
+    """S3协议存储客户端(支持MinIO, AWS S3, 阿里云OSS等)"""
 
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        初始化存储客户端
+
+        Args:
+            config: 存储配置字典,如果为None则使用环境变量配置
+        """
+        if config:
+            endpoint = config.get('endpoint')
+            access_key = config.get('access_key')
+            secret_key = config.get('secret_key')
+            secure = config.get('is_secure', False)
+            region = config.get('region', 'us-east-1')
+            self.bucket_name = config.get('bucket_name')
+            self.public_url = config.get('public_url')
+        else:
+            # 使用环境变量配置(向后兼容)
+            endpoint = settings.STORAGE_ENDPOINT
+            access_key = settings.STORAGE_ACCESS_KEY
+            secret_key = settings.STORAGE_SECRET_KEY
+            secure = settings.STORAGE_SECURE
+            region = settings.STORAGE_REGION
+            self.bucket_name = settings.STORAGE_BUCKET_NAME
+            self.public_url = settings.STORAGE_PUBLIC_URL
+
         self.client = Minio(
-            endpoint=settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            secure=settings.MINIO_SECURE,
-            region=settings.MINIO_REGION,
+            endpoint=endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure,
+            region=region,
         )
-        self.bucket_name = settings.MINIO_BUCKET_NAME
 
     async def ensure_bucket_exists(self) -> None:
         """确保存储桶存在"""
@@ -237,23 +262,23 @@ class MinIOStorage:
         try:
             # 默认使用内部客户端
             signing_client = self.client
-            
+
             # 如果配置了公开访问 URL
-            if settings.MINIO_PUBLIC_URL:
-                public_url = settings.MINIO_PUBLIC_URL
+            if self.public_url:
+                public_url = self.public_url
                 clean_endpoint = public_url.replace("http://", "").replace("https://", "").rstrip('/')
-                is_secure = public_url.startswith("https://") or settings.MINIO_SECURE
-                
+                is_secure = public_url.startswith("https://")
+
                 try:
                     # 强行指定 region 可以防止 SDK 尝试连接网络获取 location
                     signing_client = Minio(
                         endpoint=clean_endpoint,
-                        access_key=settings.MINIO_ACCESS_KEY,
-                        secret_key=settings.MINIO_SECRET_KEY,
+                        access_key=self.client._access_key,
+                        secret_key=self.client._secret_key,
                         secure=is_secure,
-                        region=settings.MINIO_REGION,
+                        region=self.client._region,
                     )
-                    
+
                     return signing_client.presigned_get_object(
                         bucket_name=self.bucket_name,
                         object_name=object_key,
@@ -269,8 +294,8 @@ class MinIOStorage:
                         expires=expires,
                     )
                     # 将内部 endpoint 替换为外部 endpoint
-                    return url.replace(settings.MINIO_ENDPOINT, clean_endpoint)
-            
+                    return url.replace(self.client._endpoint_url.netloc, clean_endpoint)
+
             # 正常产生内部 URL
             return self.client.presigned_get_object(
                 bucket_name=self.bucket_name,
@@ -461,18 +486,55 @@ class MinIOStorage:
             return False
 
 
-# 全局存储客户端实例
-storage_client = MinIOStorage()
+# 全局存储客户端实例(向后兼容)
+storage_client = S3Storage()
+# 向后兼容的别名
+MinIOStorage = S3Storage
 
 
-async def get_storage_client() -> MinIOStorage:
-    """获取存储客户端实例"""
+async def get_storage_client(db: Optional[AsyncSession] = None) -> S3Storage:
+    """
+    获取存储客户端实例
+
+    Args:
+        db: 数据库会话,如果提供则从数据库加载配置
+
+    Returns:
+        存储客户端实例
+    """
+    if db:
+        # 从数据库加载默认配置
+        from src.models.storage_config import StorageConfig
+        result = await db.execute(
+            select(StorageConfig).filter(
+                StorageConfig.is_default == True,
+                StorageConfig.is_active == True
+            )
+        )
+        config = result.scalar_one_or_none()
+
+        if config:
+            # 使用数据库配置创建客户端
+            client = S3Storage({
+                'endpoint': config.endpoint,
+                'access_key': config.access_key,
+                'secret_key': config.secret_key,
+                'is_secure': config.is_secure,
+                'bucket_name': config.bucket_name,
+                'region': config.region,
+                'public_url': config.public_url,
+            })
+            await client.ensure_bucket_exists()
+            return client
+
+    # 使用环境变量配置(向后兼容)
     await storage_client.ensure_bucket_exists()
     return storage_client
 
 
 __all__ = [
-    "MinIOStorage",
+    "S3Storage",
+    "MinIOStorage",  # 向后兼容
     "StorageError",
     "storage_client",
     "get_storage_client",

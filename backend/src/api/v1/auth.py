@@ -66,12 +66,31 @@ async def get_current_user(
     return user
 
 
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """获取当前管理员用户"""
+    if not current_user.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限"
+        )
+    return current_user
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserRegister,
     db: AsyncSession = Depends(get_db)
 ) -> Any:
     """用户注册"""
+    # 检查注册是否开放
+    if not settings.ENABLE_REGISTRATION:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="注册功能已关闭"
+        )
+
     # 检查用户名是否已存在
     result = await db.execute(
         select(User).filter(
@@ -179,4 +198,5 @@ async def verify_current_token(
 __all__ = [
     "router",
     "get_current_user",
+    "get_current_admin_user",
 ]

@@ -22,6 +22,7 @@ class User(BaseModel):
     # 状态和权限
     is_active = Column(Boolean, default=True, nullable=False, comment="是否激活")
     is_verified = Column(Boolean, default=False, nullable=False, comment="是否已验证")
+    role = Column(String(20), default='user', nullable=False, comment="用户角色: admin, user")
     last_login = Column(DateTime(timezone=True), nullable=True, comment="最后登录时间")
 
     # 设置和偏好
@@ -96,6 +97,10 @@ class User(BaseModel):
         """更新最后登录时间"""
         from datetime import datetime, timezone
         self.last_login = datetime.now(timezone.utc)
+
+    def is_admin(self) -> bool:
+        """检查是否为管理员"""
+        return self.role == 'admin'
 
 
 __all__ = [
