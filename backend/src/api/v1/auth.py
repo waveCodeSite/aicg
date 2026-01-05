@@ -84,8 +84,11 @@ async def register(
     db: AsyncSession = Depends(get_db)
 ) -> Any:
     """用户注册"""
-    # 检查注册是否开放
-    if not settings.ENABLE_REGISTRATION:
+    # 从数据库检查注册是否开放
+    from src.models.system_setting import SystemSetting
+    enable_registration = await SystemSetting.get_value(db, 'enable_registration', default=True)
+
+    if not enable_registration:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="注册功能已关闭"

@@ -24,6 +24,7 @@ from .auth import router as auth_router
 from .users import router as users_router
 from .admin_users import router as admin_users_router
 from .storage_configs import router as storage_configs_router
+from .system_settings import router as system_settings_router
 from .projects import router as projects_router
 from .files import router as files_router
 from .chapters import router as chapters_router
@@ -51,6 +52,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(users_router, prefix="/users", tags=["用户管理"])
 api_router.include_router(admin_users_router, prefix="/admin/users", tags=["管理员-用户管理"])
 api_router.include_router(storage_configs_router, prefix="/admin/storage-configs", tags=["管理员-存储配置"])
+api_router.include_router(system_settings_router, prefix="/admin/system-settings", tags=["管理员-系统设置"])
 api_router.include_router(files_router, prefix="/files", tags=["文件管理"])
 api_router.include_router(projects_router, prefix="/projects", tags=["项目管理"])
 api_router.include_router(chapters_router, prefix="/chapters", tags=["章节管理"])

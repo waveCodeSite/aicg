@@ -5,16 +5,16 @@
 ### 1. 动态控制注册功能
 
 **后端实现:**
-- 在 `backend/src/core/config.py` 中添加了 `ENABLE_REGISTRATION` 配置项
-- 在 `backend/src/api/v1/auth.py` 的注册接口中添加了注册开关检查
-- 支持通过环境变量 `ENABLE_REGISTRATION=true/false` 控制注册功能
+- 创建了 `backend/src/models/system_setting.py` 系统设置模型
+- 创建了 `backend/src/api/v1/system_settings.py` 系统设置管理API
+- 在 `backend/src/api/v1/auth.py` 的注册接口中从数据库读取注册开关
+- 支持通过管理后台界面动态控制注册功能
+- 创建了数据库迁移文件 `030_create_system_settings_table.py`
 
 **使用方法:**
-```bash
-# 在 .env 文件中设置
-ENABLE_REGISTRATION=false  # 关闭注册
-ENABLE_REGISTRATION=true   # 开启注册(默认)
-```
+- 管理员通过 `/api/v1/admin/system-settings` API管理系统设置
+- 前端可通过 `/api/v1/admin/system-settings/public` 获取公开设置（如注册开关）
+- 默认注册功能开启，可通过管理界面关闭
 
 ### 2. 用户管理功能
 
@@ -95,15 +95,13 @@ uv run alembic upgrade head
 这将执行:
 1. `028_add_user_role_field.py` - 添加用户角色字段
 2. `029_create_storage_configs_table.py` - 创建存储配置表
+3. `030_create_system_settings_table.py` - 创建系统设置表（包含注册开关）
 
 ## 环境变量配置
 
 在 `.env` 文件中添加:
 
 ```bash
-# 用户注册控制
-ENABLE_REGISTRATION=true
-
 # 存储配置(可选,也可以通过前端界面配置)
 STORAGE_TYPE=minio
 STORAGE_ENDPOINT=localhost:9000
@@ -113,6 +111,8 @@ STORAGE_SECURE=false
 STORAGE_BUCKET_NAME=aicg-files
 STORAGE_REGION=us-east-1
 ```
+
+注意：注册开关和存储配置都可以通过管理后台界面配置，无需在环境变量中设置。
 
 ## 创建管理员用户
 
@@ -129,12 +129,15 @@ UPDATE users SET role = 'admin' WHERE username = 'your_admin_username';
 新增的API端点:
 - `/api/v1/admin/users/*` - 用户管理
 - `/api/v1/admin/storage-configs/*` - 存储配置管理
+- `/api/v1/admin/system-settings/*` - 系统设置管理
+- `/api/v1/admin/system-settings/public` - 获取公开设置（无需认证）
 
 ## 前端实现(待完成)
 
 需要实现的前端页面:
 1. 用户管理页面 - 管理员查看、编辑、禁用用户
 2. 存储配置页面 - 管理员配置多个存储服务
+3. 系统设置页面 - 管理员配置系统设置（包含注册开关）
 
 ## 注意事项
 
