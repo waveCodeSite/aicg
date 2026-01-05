@@ -89,13 +89,13 @@
                   <el-icon><Check /></el-icon>
                 </div>
               </div>
-              <div 
-                class="type-card" 
+              <div
+                class="type-card"
                 :class="{ active: formData.type === 'ai_movie' }"
                 @click="formData.type = 'ai_movie'"
               >
                 <div class="type-img">
-                  <img src="@/assets/images/ai_movie_type.png" alt="AI电影">
+                  <el-icon :size="48"><Collection /></el-icon>
                 </div>
                 <div class="type-info">
                   <div class="type-title">AI 电影</div>
@@ -179,13 +179,13 @@
                 <el-icon><Check /></el-icon>
               </div>
             </div>
-            <div 
-              class="type-card" 
+            <div
+              class="type-card"
               :class="{ active: textFormData.type === 'ai_movie' }"
               @click="textFormData.type = 'ai_movie'"
             >
               <div class="type-img">
-                <img src="@/assets/images/ai_movie_type.png" alt="AI电影">
+                <el-icon :size="48"><Collection /></el-icon>
               </div>
               <div class="type-info">
                 <div class="type-title">AI 电影</div>
@@ -630,6 +630,13 @@ defineExpose({
   height: 100px;
   overflow: hidden;
   background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.type-img .el-icon {
+  color: var(--primary-color);
 }
 
 .type-img img {
