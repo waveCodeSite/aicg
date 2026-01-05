@@ -73,13 +73,13 @@
           <div class="type-selection">
             <div class="selection-label">项目类型</div>
             <div class="type-cards">
-              <div 
-                class="type-card" 
+              <div
+                class="type-card"
                 :class="{ active: formData.type === 'picture_narrative' }"
                 @click="formData.type = 'picture_narrative'"
               >
                 <div class="type-img">
-                  <img src="@/assets/images/picture_narrative_type.png" alt="解说视频">
+                  <el-icon :size="48"><VideoCamera /></el-icon>
                 </div>
                 <div class="type-info">
                   <div class="type-title">解说视频</div>
@@ -163,13 +163,13 @@
         <div class="type-selection" style="margin-bottom: 20px;">
           <div class="selection-label">项目类型</div>
           <div class="type-cards">
-            <div 
-              class="type-card" 
+            <div
+              class="type-card"
               :class="{ active: textFormData.type === 'picture_narrative' }"
               @click="textFormData.type = 'picture_narrative'"
             >
               <div class="type-img">
-                <img src="@/assets/images/picture_narrative_type.png" alt="解说视频">
+                <el-icon :size="48"><VideoCamera /></el-icon>
               </div>
               <div class="type-info">
                 <div class="type-title">解说视频</div>
