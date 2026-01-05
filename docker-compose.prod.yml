@@ -76,7 +76,7 @@ services:
 
   # 后端 API 服务
   backend:
-    image: qingshui869413421/aicon-backend:latest
+    image: wave/aicon-backend:latest
     container_name: aicon-backend
     restart: unless-stopped
     environment:
@@ -124,7 +124,7 @@ services:
 
   # Celery Worker - 异步任务处理
   celery-worker:
-    image: qingshui869413421/aicon-backend:latest
+    image: wave/aicon-backend:latest
     container_name: aicon-celery-worker
     restart: unless-stopped
     environment:
@@ -153,7 +153,7 @@ services:
 
   # Celery Beat - 定时任务调度
   celery-beat:
-    image: qingshui869413421/aicon-backend:latest
+    image: wave/aicon-backend:latest
     container_name: aicon-celery-beat
     restart: unless-stopped
     environment:
@@ -176,7 +176,7 @@ services:
 
   # 前端服务
   frontend:
-    image: qingshui869413421/aicon-frontend:latest
+    image: wave/aicon-frontend:latest
     container_name: aicon-frontend
     restart: unless-stopped
     ports:

@@ -13,11 +13,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# 配置
-IMAGE_REGISTRY="${IMAGE_REGISTRY:-aicg}"
-VERSION="${VERSION:-latest}"
-BACKEND_IMAGE="${IMAGE_REGISTRY}/aicg-backend:${VERSION}"
-FRONTEND_IMAGE="${IMAGE_REGISTRY}/aicg-frontend:${VERSION}"
+# 配置 - 与docker-compose.prod.yml保持一致
+BACKEND_IMAGE="wave/aicon-backend:latest"
+FRONTEND_IMAGE="wave/aicon-frontend:latest"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}AICG平台 - Docker镜像构建${NC}"
@@ -67,7 +65,7 @@ echo -e "${GREEN}🎉 所有镜像构建完成！${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 echo -e "${YELLOW}构建的镜像:${NC}"
-docker images | grep "${IMAGE_REGISTRY}/aicg"
+docker images | grep "aicon-backend\|aicon-frontend"
 echo ""
 
 # 提示下一步操作
@@ -75,14 +73,12 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${YELLOW}下一步操作:${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "1. ${GREEN}测试镜像:${NC}"
-echo -e "   docker-compose -f docker-compose.prod.yml up -d"
+echo -e "1. ${GREEN}启动服务:${NC}"
+echo -e "   docker-compose -f docker-compose.prod.yml --env-file .env.production up -d"
 echo ""
-echo -e "2. ${GREEN}推送到镜像仓库:${NC}"
-echo -e "   docker push ${BACKEND_IMAGE}"
-echo -e "   docker push ${FRONTEND_IMAGE}"
+echo -e "2. ${GREEN}查看服务状态:${NC}"
+echo -e "   docker-compose -f docker-compose.prod.yml ps"
 echo ""
-echo -e "3. ${GREEN}标记为其他版本:${NC}"
-echo -e "   docker tag ${BACKEND_IMAGE} ${IMAGE_REGISTRY}/aicg-backend:v1.0.0"
-echo -e "   docker tag ${FRONTEND_IMAGE} ${IMAGE_REGISTRY}/aicg-frontend:v1.0.0"
+echo -e "3. ${GREEN}查看日志:${NC}"
+echo -e "   docker-compose -f docker-compose.prod.yml logs -f"
 echo ""
